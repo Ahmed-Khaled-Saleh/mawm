@@ -62,7 +62,6 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
-data/
 meltingpot_data/data/
 *.npz
 # Translations
