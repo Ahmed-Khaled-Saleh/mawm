@@ -18,29 +18,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-
 class Encoder(nn.Module):
-    """VAE encoder for (3, 32, 32) images"""
-    def __init__(self, img_channels=3, latent_size=128):
+    """VAE encoder for 32×32 RGB images"""
+    def __init__(self, img_channels, latent_size):
         super().__init__()
-        self.latent_size = latent_size
 
-        self.conv1 = nn.Conv2d(img_channels, 32, 4, stride=2, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, 4, stride=2, padding=1)
-        self.conv3 = nn.Conv2d(64, 128, 4, stride=2, padding=1)
-        self.conv4 = nn.Conv2d(128, 256, 4, stride=2, padding=1)
+        self.conv1 = nn.Conv2d(img_channels,  32, 4, stride=2, padding=1)   # 32→16
+        self.conv2 = nn.Conv2d(32,  64, 4, stride=2, padding=1)             # 16→8
+        self.conv3 = nn.Conv2d(64, 128, 4, stride=2, padding=1)             # 8→4
+        self.conv4 = nn.Conv2d(128, 256, 4, stride=2, padding=1)            # 4→2
 
-        # Now final feature map is 256 × 2 × 2
-        self.fc_mu = nn.Linear(256 * 2 * 2, latent_size)
-        self.fc_logsigma = nn.Linear(256 * 2 * 2, latent_size)
+        self.fc_mu        = nn.Linear(256 * 2 * 2, latent_size)
+        self.fc_logsigma  = nn.Linear(256 * 2 * 2, latent_size)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))   # 32 → 16
-        x = F.relu(self.conv2(x))   # 16 → 8
-        x = F.relu(self.conv3(x))   # 8 → 4
-        x = F.relu(self.conv4(x))   # 4 → 2
-        x = x.view(x.size(0), -1)
+        x = F.relu(self.conv1(x))  
+        x = F.relu(self.conv2(x))  
+        x = F.relu(self.conv3(x))  
+        x = F.relu(self.conv4(x))  
+
+        x = x.view(x.size(0), -1)  # flatten
 
         mu = self.fc_mu(x)
         logsigma = self.fc_logsigma(x)
@@ -52,30 +49,28 @@ class Encoder(nn.Module):
 
 # %% ../../nbs/02a_models_vae.ipynb 6
 class Decoder(nn.Module):
-    """ VAE decoder for (3, 32, 32) images """
+    """VAE decoder for 32×32 RGB images"""
     def __init__(self, img_channels, latent_size):
         super().__init__()
-        self.latent_size = latent_size
 
-        # match encoder: final size = 256 × 2 × 2
-        self.fc = nn.Linear(latent_size, 256 * 2 * 2)
+        self.fc1 = nn.Linear(latent_size, 256 * 2 * 2)
 
-        self.deconv1 = nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1)  # 2 → 4
-        self.deconv2 = nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1)   # 4 → 8
-        self.deconv3 = nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1)    # 8 → 16
-        self.deconv4 = nn.ConvTranspose2d(32, img_channels, 4, stride=2, padding=1)  # 16 → 32
+        self.deconv1 = nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1)  # 2→4
+        self.deconv2 = nn.ConvTranspose2d(128,  64, 4, stride=2, padding=1)  # 4→8
+        self.deconv3 = nn.ConvTranspose2d(64,   32, 4, stride=2, padding=1)  # 8→16
+        self.deconv4 = nn.ConvTranspose2d(32, img_channels, 4, stride=2, padding=1) # 16→32
 
     def forward(self, x):
-        x = self.fc(x)
-        x = x.view(x.size(0), 256, 2, 2)     # reshape latent → feature map
+        x = F.relu(self.fc1(x))
+        x = x.view(-1, 256, 2, 2)
 
-        x = F.relu(self.deconv1(x))          # 2 → 4
-        x = F.relu(self.deconv2(x))          # 4 → 8
-        x = F.relu(self.deconv3(x))          # 8 → 16
+        x = F.relu(self.deconv1(x))
+        x = F.relu(self.deconv2(x))
+        x = F.relu(self.deconv3(x))
 
-        # final output: (3, 32, 32)
-        x = torch.sigmoid(self.deconv4(x))   # 16 → 32
-        return x
+        reconstruction = torch.sigmoid(self.deconv4(x))
+        return reconstruction
+
 
 
 # %% ../../nbs/02a_models_vae.ipynb 8
