@@ -132,7 +132,8 @@ def fit(self: VAETrainer):
             'earlystopping': self.earlystopping.state_dict()
         }, is_best, filename, best_filename)
 
-        
+        if self.earlystopping.early_stop(test_loss):             
+            break
         # if self.earlystopping.stop:
         #     print("End of Training because of early stopping at epoch {}".format(epoch))
         #     break

@@ -24,7 +24,7 @@ from MAWM.core import get_cls
 from MAWM.data.utils import transform_train, transform_test
 from MAWM.data.loaders import RolloutObservationDataset
 
-from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopping
+from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopping, EarlyStopper
 from MAWM.trainers.vae_trainer import VAETrainer
 from MAWM.writers.wandb_writer import WandbWriter
 
@@ -89,7 +89,7 @@ def main():
     optimizer = optimizer_cls(model.parameters(), lr=cfg.optimizer.lr)
 
     scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=5)
-    earlystopping = EarlyStopping('min', patience=30)
+    earlystopping = EarlyStopper(patience=30, min_delta=10)
 
 
     def criterion(recon_x, x, mu, logsigma):
