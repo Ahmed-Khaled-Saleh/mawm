@@ -100,7 +100,7 @@ def eval_epoch(self: VAETrainer):
 
     test_loss /= len(self.val_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
-    return test_loss / len(self.val_loader.dataset)
+    return test_loss
 
 
 # %% ../../nbs/05b_trainers_vae_trainer.ipynb 8
