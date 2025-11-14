@@ -113,7 +113,7 @@ def fit(self: VAETrainer):
         train_loss = self.train_epoch(epoch)
         test_loss = self.eval_epoch()
         self.scheduler.step(test_loss)
-        self.earlystopping.step(test_loss)
+        # self.earlystopping.step(test_loss)
 
         # checkpointing
         best_filename = os.path.join(self.vae_dir, 'best.pth')
@@ -133,9 +133,9 @@ def fit(self: VAETrainer):
         }, is_best, filename, best_filename)
 
         
-        if self.earlystopping.stop:
-            print("End of Training because of early stopping at epoch {}".format(epoch))
-            break
+        # if self.earlystopping.stop:
+        #     print("End of Training because of early stopping at epoch {}".format(epoch))
+        #     break
 
         to_log = {
             "train_loss": train_loss, 
