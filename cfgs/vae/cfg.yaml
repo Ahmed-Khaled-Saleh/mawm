@@ -22,11 +22,11 @@ data:
 model:
   name: VAE
   channels: 3
-  img_size: 40
-  latent_size: 512
+  img_size: 32
+  latent_size: 32
   grad_norm_clip: 1.0
 
 
 optimizer:
   name: Adam
-  lr: 0.001
+  lr: 0.0001
