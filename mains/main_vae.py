@@ -15,7 +15,6 @@ from torch.nn import functional as F
 from torchvision import transforms
 from omegaconf import OmegaConf
 from dotenv import load_dotenv
-import wandb
 
 
 
@@ -29,7 +28,7 @@ from MAWM.trainers.vae_trainer import VAETrainer
 from MAWM.writers.wandb_writer import WandbWriter
 
 
-cfg = OmegaConf.load(join("../cfgs", "vae", "cfg.yaml"))
+# cfg = OmegaConf.load(join("../cfgs", "vae", "cfg.yaml"))
 
 
 parser = argparse.ArgumentParser(description='VAE Training')
@@ -52,6 +51,21 @@ parser.add_argument('--nosamples', action='store_true',
 args = parser.parse_args()
 
 
+if args.env_file:
+    load_dotenv(args.env_file)
+    key = os.getenv("WANDB_API_KEY", None)
+    hf_secret = os.getenv("HF_SECRET_CODE", None)
+
+    if key:
+        os.environ["WANDB_API_KEY"] = key
+    if hf_secret:
+        os.environ["HF_SECRET_CODE"] = hf_secret     
+
+try:
+    cfg = OmegaConf.load(args.config)
+except:
+    print("Invalid config file path")
+
 cfg.now = args.timestamp 
 
 cfg.optimizer.lr = float(args.lr) if args.lr else cfg.optimizer.lr
@@ -59,7 +73,7 @@ cfg.data.batch_size = int(args.batch_size) if args.batch_size else cfg.data.batc
 cfg.optimizer.name = args.optimizer if args.optimizer else cfg.optimizer.name
 
 
-def main():
+def main(cfg):
 
     cuda = torch.cuda.is_available()
     torch.manual_seed(123)
@@ -99,8 +113,8 @@ def main():
         return BCE + KL
 
     
-    now = time.strftime("%Y%m%d-%H%M%S")
-    cfg.now = now
+    # now = time.strftime("%Y%m%d-%H%M%S")
+    # cfg.now = now
     writer = WandbWriter(cfg)
     trainer = VAETrainer(cfg, model, train_loader, val_loader, criterion, 
                         optimizer, device, dataset_train, dataset_test,
@@ -111,4 +125,4 @@ def main():
     return df_res
 
 if __name__ == "__main__":
-    main()
+    main(cfg)
