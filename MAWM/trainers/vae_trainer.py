@@ -93,9 +93,10 @@ def eval_epoch(self: VAETrainer):
     test_loss = 0
     with torch.no_grad():
         for data in self.val_loader:
-            data = data.to(self.device)
-            recon_batch, mu, logvar = self.model(data)
-            test_loss += self.criterion(recon_batch, data, mu, logvar).item()
+            observation = data[0][0]
+            observation = observation.to(self.device)
+            recon_batch, mu, logvar = self.model(observation)
+            test_loss += self.criterion(recon_batch, observation, mu, logvar).item()
 
     test_loss /= len(self.val_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
