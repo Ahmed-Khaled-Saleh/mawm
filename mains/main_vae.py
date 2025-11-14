@@ -107,5 +107,8 @@ def main():
                         earlystopping, scheduler, writer)
 
     df_res = trainer.fit()
-    df_reset = df_res.reset_index()
-    writer.log({'dataframe_table': wandb.Table(dataframe= df_reset)})
+    df_res.to_csv(join(cfg.log_dir, f"vae_train_val_loss_{cfg.now}.csv"))
+    return df_res
+
+if __name__ == "__main__":
+    main()
