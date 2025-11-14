@@ -62,11 +62,13 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
-
+data/
+meltingpot_data/data/
+*.npz
 # Translations
 *.mo
 *.pot
-
+*.zip
 # Django stuff:
 *.log
 local_settings.py
@@ -74,7 +76,7 @@ local_settings.py
 # Flask stuff:
 instance/
 .webassets-cache
-
+wandb
 # Scrapy stuff:
 .scrapy
 
