@@ -65,7 +65,6 @@ def train_epoch(self: VAETrainer, epoch):
     train_loss = 0
     for batch_idx, data in enumerate(self.train_loader):
         observation = data[0][0]
-        # import pdb; pdb.set_trace()
         observation = observation.to(self.device)
         self.optimizer.zero_grad()
         recon_batch, mu, logvar = self.model(observation)
@@ -104,6 +103,9 @@ def eval_epoch(self: VAETrainer):
 
 
 # %% ../../nbs/05b_trainers_vae_trainer.ipynb 8
+import wandb
+
+
 @patch
 def fit(self: VAETrainer):
     cur_best = None
@@ -113,7 +115,6 @@ def fit(self: VAETrainer):
         train_loss = self.train_epoch(epoch)
         test_loss = self.eval_epoch()
         self.scheduler.step(test_loss)
-        # self.earlystopping.step(test_loss)
 
         # checkpointing
         best_filename = os.path.join(self.vae_dir, 'best.pth')
@@ -129,14 +130,12 @@ def fit(self: VAETrainer):
             'precision': test_loss,
             'optimizer': self.optimizer.state_dict(),
             'scheduler': self.scheduler.state_dict(),
-            'earlystopping': self.earlystopping.state_dict()
+            # 'earlystopping': self.earlystopping.state_dict()
         }, is_best, filename, best_filename)
 
         if self.earlystopping.early_stop(test_loss):             
             break
-        # if self.earlystopping.stop:
-        #     print("End of Training because of early stopping at epoch {}".format(epoch))
-        #     break
+       
 
         to_log = {
             "train_loss": train_loss, 
@@ -147,5 +146,9 @@ def fit(self: VAETrainer):
         df = pd.DataFrame.from_records([{"epoch": epoch ,"train_loss": train_loss, "test_loss":test_loss}], index= "epoch")
         lst_dfs.append(df)
 
+    df_res = pd.concat(lst_dfs)
+    df_reset = df_res.reset_index()
+    self.writer.write({'Train-Val Loss Table': wandb.Table(dataframe= df_reset)})
+
     self.writer.finish()
-    return pd.concat(lst_dfs)
+    return df_reset
