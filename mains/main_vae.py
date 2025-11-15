@@ -68,9 +68,9 @@ except:
 
 cfg.now = args.timestamp 
 
-cfg.optimizer.lr = float(args.lr) if args.lr else cfg.optimizer.lr
-cfg.data.batch_size = int(args.batch_size) if args.batch_size else cfg.data.batch_size
-cfg.optimizer.name = args.optimizer if args.optimizer else cfg.optimizer.name
+# cfg.optimizer.lr = float(args.lr) if args.lr else cfg.optimizer.lr
+# cfg.data.batch_size = int(args.batch_size) if args.batch_size else cfg.data.batch_size
+# cfg.optimizer.name = args.optimizer if args.optimizer else cfg.optimizer.name
 
 
 def main(cfg):
