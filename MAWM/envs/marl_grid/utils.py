@@ -29,7 +29,7 @@ def export_video(X, outfile, fps=30, rescale_factor=2):
     if isinstance(X, list):
         X = np.stack(X)
 
-    if isinstance(X, np.float) and X.max() < 1:
+    if isinstance(X, float) and X.max() < 1:
         X = (X * 255).astype(np.uint8).clip(0, 255)
 
     if rescale_factor is not None and rescale_factor != 1:

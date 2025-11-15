@@ -117,8 +117,8 @@ class FindGoalMultiGrid(MultiGridEnv):
             return obs_dict
 
     def _get_reward(self, rwd, agent_no):
-        step_rewards = np.zeros((len(self.agents, )), dtype=np.float)
-        env_rewards = np.zeros((len(self.agents, )), dtype=np.float)
+        step_rewards = np.zeros((len(self.agents, )), dtype=float)
+        env_rewards = np.zeros((len(self.agents, )), dtype=float)
         if agent_no in self.adv_indices:
             # agent can only receive rewards if it is non-adversarial
             return env_rewards, step_rewards

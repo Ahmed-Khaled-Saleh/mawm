@@ -157,12 +157,12 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
 
     def _get_data(self, data, seq_index):
         obs_data = data['observations'][seq_index:seq_index + self._seq_len + 1]
-        obs_data = self._transform(obs_data.astype(np.float32))
+        obs_data = self._transform(obs_data.astype(float32))
         obs, next_obs = obs_data[:-1], obs_data[1:]
         action = data['actions'][seq_index+1:seq_index + self._seq_len + 1]
-        action = action.astype(np.float32)
+        action = action.astype(float32)
         reward, terminal = [data[key][seq_index+1:
-                                      seq_index + self._seq_len + 1].astype(np.float32)
+                                      seq_index + self._seq_len + 1].astype(float32)
                             for key in ('rewards', 'terminals')]
         # data is given in the form
         # (obs, action, reward, terminal, next_obs)
