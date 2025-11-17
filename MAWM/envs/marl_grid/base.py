@@ -245,7 +245,7 @@ class MultiGrid:
         raise NotImplementedError
         width, height, channels = array.shape
         assert channels == 3
-        vis_mask[i, j] = np.ones(shape=(width, height), dtype=np.bool)
+        vis_mask[i, j] = np.ones(shape=(width, height), dtype=bool)
         grid = cls((width, height))
 
     @classmethod
@@ -918,7 +918,7 @@ class MultiGridEnv(gym.Env):
 
         # Compute which cells are visible to the agent
         highlight_mask = np.full((self.width, self.height), False,
-                                 dtype=np.bool)
+                                 dtype=bool)
         for agent in self.agents:
             if agent.active:
                 xlow, ylow, xhigh, yhigh = agent.get_view_exts()

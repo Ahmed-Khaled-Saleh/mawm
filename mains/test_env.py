@@ -1,10 +1,10 @@
-# from MAWM.envs.marl_grid.envs.findgoal_env.environments import make_environment
-# from MAWM.envs.marl_grid.envs.findgoal_env.cfgs import config
+from MAWM.envs.marl_grid.envs.findgoal_env.environments import make_environment
+from MAWM.envs.marl_grid.envs.findgoal_env.cfgs import config
 
-# create_env = lambda: make_environment(config.env_cfg)
+create_env = lambda: make_environment(config.env_cfg)
 
-# env = create_env()
-# # agents = [f'agent_{i}' for i in range(env.num_agents)]
+env = create_env()
+# agents = [f'agent_{i}' for i in range(env.num_agents)]
 # # obs = env.reset()
 # # print(obs.keys())
 # # img = obs['agent_0']['pov']
@@ -55,47 +55,47 @@
 
 # import torch
 # import numpy as np
-# agents = [f'agent_{i}' for i in range(config.env_cfg.num_agents)]
+agents = [f'agent_{i}' for i in range(config.env_cfg.num_agents)]
 
 
 # trajectories = [ [] for _ in agents ]  # list per agent
 
 # # num_episodes = 100
-# obs = env.reset()
+obs = env.reset()
 
 
-# done = False
-# step = 0
-# # loop while numpy array 'done' is not all True
-# while not done and step < config.env_cfg.max_steps:
-#     # For each agent: encode obs, generate message, choose action
-#     messages = []
-#     actions = {agent: None for agent in agents}
-#     latents = []
-#     for i, agent in enumerate(agents):
-#         # import pdb; pdb.set_trace()
-#         o = obs[agent]['pov']  # or however obs is structured
-#         action = env.action_space.sample()  # placeholder for agent action
-#         actions[agent] = action
-#     print(obs['global'].keys())
-#     # Step in environment
-#     next_obs, rewards, done, infos = env.step(actions)  # depends on their env API
-#     # print(f"Step {step}: rewards = {rewards}, done = {done}")
-#     print(done['__all__'])
-#     done = done['__all__']
-#     # print(np.all(done))
-#     # # Save transitions
-#     # for i, agent in enumerate(agents):
-#     #     trajectories[i].append({
-#     #         "obs": obs[agent]['pov'],
-#     #         "action": actions[agent],
-#     #         "reward": rewards[agent],
-#     #         "next_obs": next_obs[agent]['pov'],
-#     #     })
+done = False
+step = 0
+# loop while numpy array 'done' is not all True
+while not done and step < config.env_cfg.max_steps:
+    # For each agent: encode obs, generate message, choose action
+    messages = []
+    actions = {agent: None for agent in agents}
+    latents = []
+    for i, agent in enumerate(agents):
+        # import pdb; pdb.set_trace()
+        o = obs[agent]['pov']  # or however obs is structured
+        action = env.action_space.sample()  # placeholder for agent action
+        actions[agent] = action
+    print(obs['global'].keys())
+    # Step in environment
+    next_obs, rewards, done, infos = env.step(actions)  # depends on their env API
+    print(f"Step {step}: rewards = {rewards}, done = {done}")
+    print(done['__all__'])
+    done = done['__all__']
+    # print(np.all(done))
+    # # Save transitions
+    # for i, agent in enumerate(agents):
+    #     trajectories[i].append({
+    #         "obs": obs[agent]['pov'],
+    #         "action": actions[agent],
+    #         "reward": rewards[agent],
+    #         "next_obs": next_obs[agent]['pov'],
+    #     })
 
-#     # obs = next_obs
-#     step += 1
-
+    # obs = next_obs
+    step += 1
+ 
 # import matplotlib.pyplot as plt
 # img = o#next_obs['agent_1']['pov']
 # plt.imshow(img) 
