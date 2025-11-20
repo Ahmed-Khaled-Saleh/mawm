@@ -31,7 +31,7 @@ def export_video(X, outfile, fps=30, rescale_factor=2):
 
     if isinstance(X, float) and X.max() < 1:
         X = (X * 255).astype(np.uint8).clip(0, 255)
-
+    print(X.shape)
     if rescale_factor is not None and rescale_factor != 1:
         print('`rescale_factor` is deprecated in `export_video`. ' +\
               'use `env.video_scale` instead. ')
@@ -107,10 +107,11 @@ class GridRecorder(gym.core.Wrapper):
         self.render_reward = True
 
         if max_steps is None:
+
             if hasattr(env, "max_steps") and env.max_steps != 0:
                 self.max_steps = env.max_steps + 1
             else:
-                self.max_steps = self.default_max_steps + 1
+                self.max_steps = self.default_max_len + 1
         else:
             self.max_steps = max_steps + 1
 
@@ -193,6 +194,9 @@ class GridRecorder(gym.core.Wrapper):
 
             self.frames[self.ptr] = new_frame
             self.ptr += 1
+            # if self.ptr < len(self.frames):
+            #     self.frames[self.ptr] = new_frame
+            # self.ptr += 1
 
     def step(self, action):
         if self.ptr == 0:

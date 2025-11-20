@@ -78,7 +78,7 @@ instance/
 wandb
 # Scrapy stuff:
 .scrapy
-
+*.mp4
 # Sphinx documentation
 docs/_build/
 
