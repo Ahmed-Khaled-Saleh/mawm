@@ -36,7 +36,7 @@ class Encoder(nn.Module):
         x = F.relu(self.conv2(x))  
         x = F.relu(self.conv3(x))  
         x = F.relu(self.conv4(x))  
-
+        print(x.shape)
         x = x.view(x.size(0), -1)  # flatten
 
         mu = self.fc_mu(x)
@@ -47,7 +47,7 @@ class Encoder(nn.Module):
 
 
 
-# %% ../../nbs/02a_models_vae.ipynb 6
+# %% ../../nbs/02a_models_vae.ipynb 11
 class Decoder(nn.Module):
     """VAE decoder for 32×32 RGB images"""
     def __init__(self, img_channels, latent_size):
@@ -73,7 +73,7 @@ class Decoder(nn.Module):
 
 
 
-# %% ../../nbs/02a_models_vae.ipynb 8
+# %% ../../nbs/02a_models_vae.ipynb 13
 class VAE(nn.Module):
     """ Variational Autoencoder """
     def __init__(self, img_channels, latent_size):
