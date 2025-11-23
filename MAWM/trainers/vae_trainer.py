@@ -31,7 +31,7 @@ class VAETrainer(Trainer):
         self.scheduler = scheduler
         self.writer = writer
 
-        self.vae_dir = os.path.join(self.cfg.log_dir, 'vae')
+        self.vae_dir = os.path.join(self.cfg.log_dir, 'vae_marlrid')
         if not os.path.exists(self.vae_dir):
             os.mkdir(self.vae_dir)
             os.mkdir(os.path.join(self.vae_dir, 'samples'))

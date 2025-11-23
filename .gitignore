@@ -68,8 +68,10 @@ meltingpot_data/data/
 *.mo
 *.pot
 *.zip
+*.png
 # Django stuff:
 *.log
+*.pdf
 local_settings.py
 
 # Flask stuff:

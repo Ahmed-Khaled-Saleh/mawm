@@ -89,7 +89,7 @@ class GridRecorder(gym.core.Wrapper):
             video_kwargs={}
             ):
         super().__init__(env)
-
+        self.agents = env.agents
         self.frames = None
         self.ptr = 0
         self.reset_count = 0

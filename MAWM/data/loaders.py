@@ -25,9 +25,12 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         self._transform = transform
 
         self._files = [
-            join(root, sd, ssd)
-            for sd in listdir(root) if isdir(join(root, sd))
-            for ssd in listdir(join(root, sd))]
+            # join(root, sd, ssd)
+            # for sd in listdir(root) if isdir(join(root, sd))
+            # for ssd in listdir(join(root, sd))]
+            join(root, sd)
+            for sd in listdir(root)
+            ]
 
         if train:
             self._files = self._files[:-600]
@@ -39,6 +42,20 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         self._buffer_fnames = None
         self._buffer_index = 0
         self._buffer_size = buffer_size
+
+    # def sample_sequence(self, rollout, agent, seq_len):
+
+    #     episode_len = rollout["episode_len"].item()
+
+    #     # sample start index uniformly in [0, episode_len)
+    #     start = np.random.randint(0, episode_len)
+
+    #     # clamp so the sequence fits
+    #     start = min(start, episode_len - seq_len)
+    #     print(f"Sampling sequence for {agent} from index {start} to {start + seq_len}")
+
+    #     end = start + seq_len
+    #     return start, end
 
     def load_next_buffer(self):
         """ Loads next buffer """
@@ -57,7 +74,7 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
             with np.load(f, allow_pickle= True) as data:
                 self._buffer += [{k: np.copy(v) for k, v in data.items()}]
                 self._cum_size += [self._cum_size[-1] +
-                                   self._data_per_sequence(data['player_0_rewards'].shape[0])]
+                                   self._data_per_sequence(data['agent_0_rew'].shape[0])]
             pbar.update(1)
         pbar.close()
 
@@ -108,27 +125,24 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return data_length
 
     def _get_data(self, data, seq_index):
-        return (self._transform(data['player_0_observations'][seq_index]['RGB']), \
-            data['player_0_rewards'][seq_index], \
-            data['player_0_actions'][seq_index], \
-            data['player_0_terminations'][seq_index]), \
-            (self._transform(data['player_1_observations'][seq_index]['RGB']), \
-            data['player_1_rewards'][seq_index], \
-            data['player_1_actions'][seq_index], \
-            data['player_1_terminations'][seq_index])
+        ind = np.random.randint(0,2)
+        other_ind = 1 - ind
+        return (self._transform(data[f'agent_{ind}_obs'][seq_index]['pov'].astype(np.uint8))), \
+            (self._transform(data[f'agent_{other_ind}_obs'][seq_index]['pov'].astype(np.uint8))),
+            
         
         
 
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 7
+# %% ../../nbs/01c_data_loaders.ipynb 11
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
     Rollouts should be stored in subdirs of the root directory, in the form of npz files,
     each containing a dictionary with the keys:
         - observations: (rollout_len, *obs_shape)
-        - actions: (rollout_len, action_size)
+        - actions: (rovllout_len, action_size)
         - rewards: (rollout_len,)
         - terminals: (rollout_len,), boolean
 
@@ -151,22 +165,49 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
     :args transform: transformation of the observations
     :args train: if True, train data, else test
     """
-    def __init__(self, root, seq_len, transform, buffer_size=200, train=True): # pylint: disable=too-many-arguments
+    def __init__(self, agents, root, seq_len, transform, buffer_size=200, train=True): # pylint: disable=too-many-arguments
         super().__init__(root, transform, buffer_size, train)
         self._seq_len = seq_len
+        self.agents = agents
+
+    def _get_agent_data(self, agent, data, seq_index):
+        data_dict = {"obs": [], "rew": [], "act": [], "info": []}
+
+        obs_data  = data[f'{agent}_obs'][seq_index:seq_index + self._seq_len + 1]
+        # print(len(obs_data))
+        obs_data  = [self._transform(obs_data[i]['pov'].astype(np.uint8)) for i in range(len(obs_data))]
+        
+        obs, next_obs = obs_data[:-1], obs_data[1:]
+        data_dict["obs"] = obs
+        data_dict["next_obs"] = next_obs
+
+        action = data[f'{agent}_act'][seq_index+1:seq_index + self._seq_len + 1]
+        action = action.astype(np.float32)
+        data_dict["act"] = action
+
+        data_dict["rew"] = data[f'{agent}_rew'][seq_index+1:seq_index + self._seq_len + 1].astype(np.float32)
+        
+        data_dict["info"] = data[f'{agent}_info'][seq_index+1:seq_index + self._seq_len + 1]
+        return data_dict
 
     def _get_data(self, data, seq_index):
-        obs_data = data['observations'][seq_index:seq_index + self._seq_len + 1]
-        obs_data = self._transform(obs_data.astype(float32))
-        obs, next_obs = obs_data[:-1], obs_data[1:]
-        action = data['actions'][seq_index+1:seq_index + self._seq_len + 1]
-        action = action.astype(float32)
-        reward, terminal = [data[key][seq_index+1:
-                                      seq_index + self._seq_len + 1].astype(float32)
-                            for key in ('rewards', 'terminals')]
-        # data is given in the form
-        # (obs, action, reward, terminal, next_obs)
-        return obs, action, reward, terminal, next_obs
+        batch_data = {}
+        for agent in self.agents:
+            agent_data_dict = self._get_agent_data(agent, data, seq_index)
+            batch_data[agent] = agent_data_dict
+        return batch_data
+
+        # obs_data = data['observations'][seq_index:seq_index + self._seq_len + 1]
+        # obs_data = self._transform(obs_data.astype(np.float32))
+        # obs, next_obs = obs_data[:-1], obs_data[1:]
+        # action = data['actions'][seq_index+1:seq_index + self._seq_len + 1]
+        # action = action.astype(np.float32)
+        # reward, terminal = [data[key][seq_index+1:
+        #                               seq_index + self._seq_len + 1].astype(np.float32)
+        #                     for key in ('rewards', 'terminals')]
+        # # data is given in the form
+        # # (obs, action, reward, terminal, next_obs)
+        # return obs, action, reward, terminal, next_obs
 
     def _data_per_sequence(self, data_length):
         return data_length - self._seq_len
