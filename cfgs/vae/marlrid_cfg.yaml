@@ -14,7 +14,7 @@ state_dir: aggregated_model_
 
 
 data:
-  data_dir: scratch/project_2009050/datasets/marl_grid/marl_grid_data
+  data_dir: /scratch/project_2009050/datasets/marl_grid/marl_grid_data
   batch_size: 32
   name: marlrid
 
