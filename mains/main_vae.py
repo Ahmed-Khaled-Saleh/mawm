@@ -141,7 +141,7 @@ def main(cfg):
 
     def criterion(recon_x, x, mu, logsigma, beta=1.0):
         """ VAE loss function """
-        BCE = F.mse_loss(recon_x, x, reduction="mean")
+        BCE = F.mse_loss(recon_x, x, reduction="sum")
         KL = -0.5 * torch.sum(1 + logsigma - mu.pow(2) - logsigma.exp())
         return BCE + beta * KL
     
