@@ -1,6 +1,6 @@
 project_name: vae_marlrid
 
-epochs: 1000
+epochs: 300
 loss_fn: CrossEntropyLoss
 writer: WandbWriter
 noreload: False
