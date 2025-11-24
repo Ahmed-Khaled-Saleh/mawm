@@ -113,7 +113,7 @@ def main(cfg):
     device = torch.device("cuda" if cuda else "cpu")
 
     dss_train, dss_test = [], []
-    for agent in cfg.agents:
+    for agent in cfg.env.agents:
         train_ds, test_ds = init_data(agent)
         dss_train.append(train_ds)
         dss_test.append(test_ds)

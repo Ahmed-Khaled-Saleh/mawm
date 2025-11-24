@@ -18,7 +18,7 @@ env:
 data:
   data_dir: /scratch/project_2009050/datasets/marl_grid/marl_grid_data
   batch_size: 32
-  buffer_size: 100
+  buffer_size: 70
   obs_key: pov
   name: marlrid
 
