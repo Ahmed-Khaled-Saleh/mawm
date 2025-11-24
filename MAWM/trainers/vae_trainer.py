@@ -21,12 +21,9 @@ from ..models.utils import save_checkpoint
 class VAETrainer(Trainer):
     def __init__(self, cfg, model, train_loader, val_loader=None, 
                  criterion=None, optimizer=None, device=None,
-                 dataset_train=None, dataset_test=None,
                  earlystopping=None, scheduler=None, writer= None):
         
         super().__init__(cfg, model, train_loader, val_loader, criterion, optimizer, device)
-        self.dataset_train = dataset_train
-        self.dataset_test = dataset_test
         self.earlystopping = earlystopping
         self.scheduler = scheduler
         self.writer = writer
@@ -61,7 +58,7 @@ def reload(self: VAETrainer):
 @patch
 def train_epoch(self: VAETrainer, epoch):
     self.model.train()
-    self.dataset_train.load_next_buffer()
+    self.train_loader.dataset.load_next_buffer()
     train_loss = 0
     for batch_idx, data in enumerate(self.train_loader):
         observation = data[0][0]
@@ -88,7 +85,7 @@ def train_epoch(self: VAETrainer, epoch):
 @patch
 def eval_epoch(self: VAETrainer):
     self.model.eval()
-    self.dataset_test.load_next_buffer()
+    self.val_loader.dataset.load_next_buffer()
     test_loss = 0
     with torch.no_grad():
         for data in self.val_loader:

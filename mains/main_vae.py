@@ -117,8 +117,7 @@ def main(cfg):
     # cfg.now = now
     writer = WandbWriter(cfg)
     trainer = VAETrainer(cfg, model, train_loader, val_loader, criterion, 
-                        optimizer, device, dataset_train, dataset_test,
-                        earlystopping, scheduler, writer)
+                        optimizer, device,earlystopping, scheduler, writer)
 
     df_res = trainer.fit()
     df_res.to_csv(join(cfg.log_dir, f"vae_train_val_loss_{cfg.now}.csv"))

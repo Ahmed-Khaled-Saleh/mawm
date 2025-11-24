@@ -2,7 +2,7 @@ from MAWM.envs.marl_grid.envs.findgoal_env.environments import make_environment
 from MAWM.envs.marl_grid.envs.findgoal_env.cfgs import config
 from MAWM.envs.marl_grid.utils import GridRecorder
 import numpy as np
-config.env_cfg.seed = 0
+config.env_cfg.seed = np.random.randint(0, 10000)
 config.env_cfg.max_steps = 1000
 create_env = lambda: make_environment(config.env_cfg)
 
