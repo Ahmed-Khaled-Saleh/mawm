@@ -60,9 +60,13 @@ def train_epoch(self: VAETrainer, epoch):
     self.model.train()
     self.train_loader.dataset.load_next_buffer()
     train_loss = 0
-    
+    LATENT_DIM = 20
+    TOTAL_EPOCHS = self.cfg.epochs
+    ANNEALING_EPOCHS = 50  # Beta reaches its maximum value after 50 epochs
+    MAX_BETA = 1.0  
     for batch_idx, data in enumerate(self.train_loader):
         # import pdb; pdb.set_trace()
+        beta = min(epoch / ANNEALING_EPOCHS, 1.0) * MAX_BETA
         obs, dones, agent_id = data
         mask = ~dones.bool()     # keep only where done is False
 
@@ -71,9 +75,10 @@ def train_epoch(self: VAETrainer, epoch):
 
         obs = obs[mask]          # filter observations
         obs = obs.to(self.device)
+
         self.optimizer.zero_grad()
         recon_batch, x, mu, logvar = self.model(obs)
-        loss = self.criterion(recon_batch, obs, mu, logvar)
+        loss = self.criterion(recon_batch, obs, mu, logvar, beta)
         loss.backward()
         train_loss += loss.item()
         self.optimizer.step()

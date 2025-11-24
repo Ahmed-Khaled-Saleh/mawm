@@ -139,12 +139,11 @@ def main(cfg):
     earlystopping = EarlyStopper(patience=30, min_delta=10)
 
 
-    def criterion(recon_x, x, mu, logsigma):
+    def criterion(recon_x, x, mu, logsigma, beta=1.0):
         """ VAE loss function """
         BCE = F.mse_loss(recon_x, x, reduction="mean")
         KL = -0.5 * torch.sum(1 + logsigma - mu.pow(2) - logsigma.exp())
-        return BCE + KL
-
+        return BCE + beta * KL
     
     # now = time.strftime("%Y%m%d-%H%M%S")
     # cfg.now = now
