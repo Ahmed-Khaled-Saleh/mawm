@@ -123,10 +123,10 @@ def main(cfg):
     dataset_test = BufferAwareConcatDataset(datasets= dss_test)
 
     train_loader = torch.utils.data.DataLoader(
-        dataset_train, batch_size=cfg.data.batch_size, shuffle=True, num_workers=2)
+        dataset_train, batch_size=cfg.data.batch_size, shuffle=True, num_workers=0)
 
     val_loader = torch.utils.data.DataLoader(
-        dataset_test, batch_size=cfg.data.batch_size, shuffle=True, num_workers=2)
+        dataset_test, batch_size=cfg.data.batch_size, shuffle=True, num_workers=0)
 
     
 

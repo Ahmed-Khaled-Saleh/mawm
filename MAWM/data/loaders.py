@@ -125,7 +125,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         print(f"Getting data at index {seq_index}")
         done = data[f'{self.agent}_info'][seq_index]['done']
         obs = data[f'{self.agent}_obs'][seq_index][self.obs_key].astype(np.uint8)
-        return self._transform(obs), done
+        return self._transform(obs), done, self.agent
 
 
 # %% ../../nbs/01c_data_loaders.ipynb 28

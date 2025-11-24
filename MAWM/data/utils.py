@@ -55,3 +55,5 @@ class BufferAwareConcatDataset(ConcatDataset):
                 # Optionally, you can raise an error or log a warning 
                 # if a dataset is missing the expected method
                 print(f"Warning: Dataset {type(dataset)} is missing load_next_buffer()")
+                
+        self.cumulative_sizes = self.cumsum(self.datasets)

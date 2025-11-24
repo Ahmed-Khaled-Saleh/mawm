@@ -63,7 +63,7 @@ def train_epoch(self: VAETrainer, epoch):
     
     for batch_idx, data in enumerate(self.train_loader):
         # import pdb; pdb.set_trace()
-        obs, dones = data
+        obs, dones, agent_id = data
         mask = ~dones.bool()     # keep only where done is False
 
         if mask.sum() == 0:
@@ -97,7 +97,7 @@ def eval_epoch(self: VAETrainer):
     test_loss = 0
     with torch.no_grad():
         for data in self.val_loader:
-            obs, dones = data
+            obs, dones, agent_id = data
             mask = ~dones.bool()     # keep only where done is False
 
             if mask.sum() == 0:
