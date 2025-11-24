@@ -30,7 +30,7 @@ while not done or step < config.env_cfg.max_steps:
     actions = {agent: None for agent in agents}
     latents = []
     for i, agent in enumerate(agents):
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
         o = obs[agent]['pov']
         action = env.action_space.sample()

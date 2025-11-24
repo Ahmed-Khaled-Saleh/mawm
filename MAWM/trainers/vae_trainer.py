@@ -61,6 +61,8 @@ def train_epoch(self: VAETrainer, epoch):
     self.train_loader.dataset.load_next_buffer()
     train_loss = 0
     for batch_idx, data in enumerate(self.train_loader):
+        if data[1]:
+            continue  # skip if done is True
         observation = data[0]
         observation = observation.to(self.device)
         self.optimizer.zero_grad()
@@ -89,6 +91,8 @@ def eval_epoch(self: VAETrainer):
     test_loss = 0
     with torch.no_grad():
         for data in self.val_loader:
+            if data[1]:
+                continue  # skip if done is True
             observation = data[0]
             observation = observation.to(self.device)
             recon_batch, mu, logvar = self.model(observation)

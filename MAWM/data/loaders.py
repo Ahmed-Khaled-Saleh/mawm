@@ -19,24 +19,22 @@ import torch.utils.data
 import numpy as np
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 5
+# %% ../../nbs/01c_data_loaders.ipynb 13
 class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-public-methods
-    def __init__(self, root, transform, buffer_size=200, train=True): # pylint: disable=too-many-arguments
+    def __init__(self, agent, root, transform, buffer_size=200, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
+        
+        self.agent = agent
         self._transform = transform
+        self.obs_key = obs_key
+        self._files = [join(root, sd) for sd in listdir(root)]
 
-        self._files = [
-            # join(root, sd, ssd)
-            # for sd in listdir(root) if isdir(join(root, sd))
-            # for ssd in listdir(join(root, sd))]
-            join(root, sd)
-            for sd in listdir(root)
-            ]
+        def train_test_split(files, train):
+            if train:
+                return files[:-600]
+            else:
+                return files[-600:]
 
-        if train:
-            self._files = self._files[:-600]
-        else:
-            self._files = self._files[-600:]
-
+        self._files = train_test_split(self._files, train)
         self._cum_size = None
         self._buffer = None
         self._buffer_fnames = None
@@ -72,9 +70,8 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
 
         for f in self._buffer_fnames:
             with np.load(f, allow_pickle= True) as data:
-                self._buffer += [{k: np.copy(v) for k, v in data.items()}]
-                self._cum_size += [self._cum_size[-1] +
-                                   self._data_per_sequence(data['agent_0_rew'].shape[0])]
+                self._buffer += [{k: np.copy(v) for k, v in data.items()}] # list of dicts,each dict is an episode data
+                self._cum_size += [self._cum_size[-1] + data['episode_len'].item()]
             pbar.update(1)
         pbar.close()
 
@@ -89,16 +86,16 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         # binary search through cum_size
         file_index = bisect(self._cum_size, i) - 1
         seq_index = i - self._cum_size[file_index]
-        data = self._buffer[file_index]
+        data = self._buffer[file_index] # list of a dict
         return self._get_data(data, seq_index)
 
     def _get_data(self, data, seq_index):
-        pass
+        raise NotImplementedError
 
     def _data_per_sequence(self, data_length):
-        pass
+        raise NotImplementedError
 
-# %% ../../nbs/01c_data_loaders.ipynb 6
+# %% ../../nbs/01c_data_loaders.ipynb 14
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -125,17 +122,13 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return data_length
 
     def _get_data(self, data, seq_index):
-        ind = np.random.randint(0,2)
-        other_ind = 1 - ind
-        return (self._transform(data[f'agent_{ind}_obs'][seq_index]['pov'].astype(np.uint8))), \
-            (self._transform(data[f'agent_{other_ind}_obs'][seq_index]['pov'].astype(np.uint8))),
-            
-        
-        
+        print(f"Getting data at index {seq_index}")
+        done = data[f'{self.agent}_info'][seq_index]['done']
+        obs = data[f'{self.agent}_obs'][seq_index][self.obs_key].astype(np.uint8)
+        return self._transform(obs), done
 
 
-
-# %% ../../nbs/01c_data_loaders.ipynb 11
+# %% ../../nbs/01c_data_loaders.ipynb 22
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -165,49 +158,32 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
     :args transform: transformation of the observations
     :args train: if True, train data, else test
     """
-    def __init__(self, agents, root, seq_len, transform, buffer_size=200, train=True): # pylint: disable=too-many-arguments
-        super().__init__(root, transform, buffer_size, train)
+    def __init__(self, agent, root, seq_len, transform, buffer_size=200, train=True, obs_key='pov'): # pylint: disable=too-many-arguments
+        super().__init__(agent, root, transform, buffer_size, train, obs_key)
         self._seq_len = seq_len
-        self.agents = agents
+        self.agent = agent
 
-    def _get_agent_data(self, agent, data, seq_index):
-        data_dict = {"obs": [], "rew": [], "act": [], "info": []}
+    def _get_agent_data(self, data, seq_index):
+        data_dict = {}
 
-        obs_data  = data[f'{agent}_obs'][seq_index:seq_index + self._seq_len + 1]
-        # print(len(obs_data))
-        obs_data  = [self._transform(obs_data[i]['pov'].astype(np.uint8)) for i in range(len(obs_data))]
+        obs_data  = data[f'{self.agent}_obs'][seq_index:seq_index + self._seq_len + 1]
+        obs_data  = [self._transform(obs_data[i][self.obs_key].astype(np.uint8)) for i in range(len(obs_data))]
         
         obs, next_obs = obs_data[:-1], obs_data[1:]
         data_dict["obs"] = obs
         data_dict["next_obs"] = next_obs
 
-        action = data[f'{agent}_act'][seq_index+1:seq_index + self._seq_len + 1]
+        action = data[f'{self.agent}_act'][seq_index+1:seq_index + self._seq_len + 1]
         action = action.astype(np.float32)
         data_dict["act"] = action
 
-        data_dict["rew"] = data[f'{agent}_rew'][seq_index+1:seq_index + self._seq_len + 1].astype(np.float32)
+        data_dict["rew"] = data[f'{self.agent}_rew'][seq_index+1:seq_index + self._seq_len + 1].astype(np.float32)
         
-        data_dict["info"] = data[f'{agent}_info'][seq_index+1:seq_index + self._seq_len + 1]
+        data_dict["info"] = data[f'{self.agent}_info'][seq_index+1:seq_index + self._seq_len + 1]
         return data_dict
 
     def _get_data(self, data, seq_index):
-        batch_data = {}
-        for agent in self.agents:
-            agent_data_dict = self._get_agent_data(agent, data, seq_index)
-            batch_data[agent] = agent_data_dict
-        return batch_data
-
-        # obs_data = data['observations'][seq_index:seq_index + self._seq_len + 1]
-        # obs_data = self._transform(obs_data.astype(np.float32))
-        # obs, next_obs = obs_data[:-1], obs_data[1:]
-        # action = data['actions'][seq_index+1:seq_index + self._seq_len + 1]
-        # action = action.astype(np.float32)
-        # reward, terminal = [data[key][seq_index+1:
-        #                               seq_index + self._seq_len + 1].astype(np.float32)
-        #                     for key in ('rewards', 'terminals')]
-        # # data is given in the form
-        # # (obs, action, reward, terminal, next_obs)
-        # return obs, action, reward, terminal, next_obs
+        return self._get_agent_data(data, seq_index)
 
     def _data_per_sequence(self, data_length):
         return data_length - self._seq_len
