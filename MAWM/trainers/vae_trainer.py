@@ -60,22 +60,28 @@ def train_epoch(self: VAETrainer, epoch):
     self.model.train()
     self.train_loader.dataset.load_next_buffer()
     train_loss = 0
+    
     for batch_idx, data in enumerate(self.train_loader):
-        if data[1]:
-            continue  # skip if done is True
-        observation = data[0]
-        observation = observation.to(self.device)
+        # import pdb; pdb.set_trace()
+        obs, dones = data
+        mask = ~dones.bool()     # keep only where done is False
+
+        if mask.sum() == 0:
+            continue  # entire batch is terminals
+
+        obs = obs[mask]          # filter observations
+        obs = obs.to(self.device)
         self.optimizer.zero_grad()
-        recon_batch, mu, logvar = self.model(observation)
-        loss = self.criterion(recon_batch, observation, mu, logvar)
+        recon_batch, mu, logvar = self.model(obs)
+        loss = self.criterion(recon_batch, obs, mu, logvar)
         loss.backward()
         train_loss += loss.item()
         self.optimizer.step()
         if batch_idx % 20 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(observation), len(self.train_loader.dataset),
+                epoch, batch_idx * len(obs), len(self.train_loader.dataset),
                 100. * batch_idx / len(self.train_loader),
-                loss.item() / len(observation)))
+                loss.item() / len(obs)))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
         epoch, train_loss / len(self.train_loader.dataset)))
@@ -91,12 +97,16 @@ def eval_epoch(self: VAETrainer):
     test_loss = 0
     with torch.no_grad():
         for data in self.val_loader:
-            if data[1]:
-                continue  # skip if done is True
-            observation = data[0]
-            observation = observation.to(self.device)
-            recon_batch, mu, logvar = self.model(observation)
-            test_loss += self.criterion(recon_batch, observation, mu, logvar).item()
+            obs, dones = data
+            mask = ~dones.bool()     # keep only where done is False
+
+            if mask.sum() == 0:
+                continue  # entire batch is terminals
+
+            obs = obs[mask]          # filter observations
+            obs = obs.to(self.device)
+            recon_batch, mu, logvar = self.model(obs)
+            test_loss += self.criterion(recon_batch, obs, mu, logvar).item()
 
     test_loss /= len(self.val_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
