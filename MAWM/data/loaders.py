@@ -122,7 +122,6 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return data_length
 
     def _get_data(self, data, seq_index):
-        print(f"Getting data at index {seq_index}")
         done = data[f'{self.agent}_info'][seq_index]['done']
         obs = data[f'{self.agent}_obs'][seq_index][self.obs_key].astype(np.uint8)
         return self._transform(obs), done, self.agent

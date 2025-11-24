@@ -72,7 +72,7 @@ def train_epoch(self: VAETrainer, epoch):
         obs = obs[mask]          # filter observations
         obs = obs.to(self.device)
         self.optimizer.zero_grad()
-        recon_batch, mu, logvar = self.model(obs)
+        recon_batch, x, mu, logvar = self.model(obs)
         loss = self.criterion(recon_batch, obs, mu, logvar)
         loss.backward()
         train_loss += loss.item()
@@ -105,7 +105,7 @@ def eval_epoch(self: VAETrainer):
 
             obs = obs[mask]          # filter observations
             obs = obs.to(self.device)
-            recon_batch, mu, logvar = self.model(obs)
+            recon_batch, x, mu, logvar = self.model(obs)
             test_loss += self.criterion(recon_batch, obs, mu, logvar).item()
 
     test_loss /= len(self.val_loader.dataset)
