@@ -13,6 +13,7 @@ import torch.utils.data
 from torch import optim
 from torch.nn import functional as F
 from torchvision import transforms
+from torch.utils.data import ConcatDataset
 from omegaconf import OmegaConf
 from dotenv import load_dotenv
 
@@ -23,7 +24,7 @@ from MAWM.core import get_cls
 from MAWM.data.utils import transform_train, transform_test
 from MAWM.data.loaders import RolloutObservationDataset
 
-from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopping, EarlyStopper
+from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopper
 from MAWM.trainers.vae_trainer import VAETrainer
 from MAWM.writers.wandb_writer import WandbWriter
 
@@ -72,6 +73,36 @@ cfg.now = args.timestamp
 # cfg.data.batch_size = int(args.batch_size) if args.batch_size else cfg.data.batch_size
 # cfg.optimizer.name = args.optimizer if args.optimizer else cfg.optimizer.name
 
+def init_data(agent_id):
+    train_ds = RolloutObservationDataset(agent= agent_id,
+                                        root= cfg.data.data_dir,
+                                        transform= transform_train,
+                                        buffer_size= cfg.data.buffer_size,
+                                        train=True,
+                                        obs_key= cfg.data.obs_key
+                                        )
+    
+    test_ds = RolloutObservationDataset(agent= agent_id,
+                                        root= cfg.data.data_dir,
+                                        transform= transform_test,
+                                        buffer_size= cfg.data.buffer_size,
+                                        train=False,
+                                        obs_key= cfg.data.obs_key
+                                        )
+    return train_ds, test_ds
+    
+
+
+def init_model():
+    model_cls = get_cls(f"MAWM.models.{cfg.model.name.lower()}", cfg.model.name)
+    model = model_cls(cfg.model.channels, cfg.model.latent_size)
+    return model
+
+
+def init_opt(model):
+    optimizer_cls = get_cls("torch.optim", cfg.optimizer.name)
+    optimizer = optimizer_cls(model.parameters(), lr=cfg.optimizer.lr)
+    return optimizer
 
 def main(cfg):
 
@@ -81,14 +112,15 @@ def main(cfg):
     torch.backends.cudnn.benchmark = True
     device = torch.device("cuda" if cuda else "cpu")
 
+    dss_train, dss_test = [], []
+    for agent in cfg.agents:
+        train_ds, test_ds = init_data(agent)
+        dss_train.append(train_ds)
+        dss_test.append(test_ds)
 
-    dataset_train = RolloutObservationDataset(cfg.data.data_dir,
-                                            transform_train, 
-                                            train=True)
 
-    dataset_test = RolloutObservationDataset(cfg.data.data_dir,
-                                            transform_test,
-                                            train=False)
+    dataset_train = ConcatDataset(datasets= dss_train)
+    dataset_test = ConcatDataset(datasets= dss_test)
 
     train_loader = torch.utils.data.DataLoader(
         dataset_train, batch_size=cfg.data.batch_size, shuffle=True, num_workers=2)
@@ -96,11 +128,12 @@ def main(cfg):
     val_loader = torch.utils.data.DataLoader(
         dataset_test, batch_size=cfg.data.batch_size, shuffle=True, num_workers=2)
 
-    model_cls = get_cls(f"MAWM.models.{cfg.model.name.lower()}", cfg.model.name)
-    model = model_cls(cfg.model.channels, cfg.model.latent_size).to(device)
+    
 
-    optimizer_cls = get_cls("torch.optim", cfg.optimizer.name)
-    optimizer = optimizer_cls(model.parameters(), lr=cfg.optimizer.lr)
+    model = init_model()
+    model = model.to(device)
+
+    optimizer = init_opt(model= model)
 
     scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=5)
     earlystopping = EarlyStopper(patience=30, min_delta=10)

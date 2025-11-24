@@ -128,7 +128,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), done
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 22
+# %% ../../nbs/01c_data_loaders.ipynb 28
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
