@@ -126,7 +126,7 @@ def main(cfg):
         dataset_train, batch_size=cfg.data.batch_size, shuffle=True, num_workers=0)
 
     val_loader = torch.utils.data.DataLoader(
-        dataset_test, batch_size=cfg.data.batch_size, shuffle=True, num_workers=0)
+        dataset_test, batch_size=cfg.data.batch_size, shuffle=False, num_workers=0)
 
     
 
