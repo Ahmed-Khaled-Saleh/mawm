@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 from MAWM.core import get_cls
 
-from MAWM.data.utils import transform_train, transform_test
+from MAWM.data.utils import transform_train, transform_test, BufferAwareConcatDataset
 from MAWM.data.loaders import RolloutObservationDataset
 
 from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopper
@@ -119,8 +119,8 @@ def main(cfg):
         dss_test.append(test_ds)
 
 
-    dataset_train = ConcatDataset(datasets= dss_train)
-    dataset_test = ConcatDataset(datasets= dss_test)
+    dataset_train = BufferAwareConcatDataset(datasets= dss_train)
+    dataset_test = BufferAwareConcatDataset(datasets= dss_test)
 
     train_loader = torch.utils.data.DataLoader(
         dataset_train, batch_size=cfg.data.batch_size, shuffle=True, num_workers=2)
