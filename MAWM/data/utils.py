@@ -19,17 +19,26 @@ import numpy as np
 ASIZE, LSIZE, RSIZE, RED_SIZE, SIZE =\
     3, 32, 256, 32, 40
 
+# transform_train = transforms.Compose([
+#     transforms.ToPILImage(),
+#     transforms.Resize((RED_SIZE, RED_SIZE)),
+#     transforms.RandomHorizontalFlip(),
+#     transforms.ToTensor(),
+# ])
 transform_train = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize((RED_SIZE, RED_SIZE)),
-    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5),
+                         (0.5, 0.5, 0.5)),
 ])
 
 transform_test = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize((RED_SIZE, RED_SIZE)),
     transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5),
+                         (0.5, 0.5, 0.5)),
 ])
 
 

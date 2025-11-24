@@ -47,7 +47,7 @@ class Encoder(nn.Module):
 
 
 
-# %% ../../nbs/02a_models_vae.ipynb 11
+# %% ../../nbs/02a_models_vae.ipynb 5
 class Decoder(nn.Module):
     """VAE decoder for 32×32 RGB images"""
     def __init__(self, img_channels, latent_size):
@@ -73,19 +73,119 @@ class Decoder(nn.Module):
 
 
 
-# %% ../../nbs/02a_models_vae.ipynb 13
+# %% ../../nbs/02a_models_vae.ipynb 8
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# ===============================================================
+#                         VAE MODEL
+# ===============================================================
+
 class VAE(nn.Module):
-    """ Variational Autoencoder """
-    def __init__(self, img_channels, latent_size):
-        super(VAE, self).__init__()
-        self.encoder = Encoder(img_channels, latent_size)
-        self.decoder = Decoder(img_channels, latent_size)
+    def __init__(self, in_channels=3, latent_dim=128):
+        super().__init__()
 
-    def forward(self, x): # pylint: disable=arguments-differ
-        mu, logsigma = self.encoder(x)
-        sigma = logsigma.exp()
-        eps = torch.randn_like(sigma)
-        z = eps.mul(sigma).add_(mu)
+        self.latent_dim = latent_dim
 
-        recon_x = self.decoder(z)
-        return recon_x, mu, logsigma
+        # Encoder hidden channels
+        hidden_dims = [32, 64, 128, 256]   # 4 blocks only
+
+        # -----------------------
+        #        Encoder
+        # -----------------------
+        modules = []
+        for h_dim in hidden_dims:
+            modules.append(
+                nn.Sequential(
+                    nn.Conv2d(in_channels, h_dim, kernel_size=3,
+                              stride=2, padding=1),
+                    nn.BatchNorm2d(h_dim),
+                    nn.LeakyReLU()
+                )
+            )
+            in_channels = h_dim
+
+        # 32x32 → 16 → 8 → 4 → 2  ⟹ final shape = 256×2×2
+        self.encoder = nn.Sequential(*modules)
+
+        flattened_dim = hidden_dims[-1] * 2 * 2  # 256*4 = 1024
+
+        self.fc_mu  = nn.Linear(flattened_dim, latent_dim)
+        self.fc_var = nn.Linear(flattened_dim, latent_dim)
+
+        # -----------------------
+        #        Decoder
+        # -----------------------
+        self.decoder_input = nn.Linear(latent_dim, flattened_dim)
+
+        hidden_dims = hidden_dims[::-1]   # reverse: [256, 128, 64, 32]
+
+        modules = []
+        for i in range(len(hidden_dims) - 1):
+            modules.append(
+                nn.Sequential(
+                    nn.ConvTranspose2d(hidden_dims[i],
+                                       hidden_dims[i + 1],
+                                       kernel_size=3,
+                                       stride=2,
+                                       padding=1,
+                                       output_padding=1),
+                    nn.BatchNorm2d(hidden_dims[i + 1]),
+                    nn.LeakyReLU()
+                )
+            )
+
+        self.decoder = nn.Sequential(*modules)
+
+        # Final layer to get back to 32x32 resolution
+        self.final_layer = nn.Sequential(
+            nn.ConvTranspose2d(hidden_dims[-1],
+                               hidden_dims[-1],
+                               kernel_size=3,
+                               stride=2,
+                               padding=1,
+                               output_padding=1),
+            nn.BatchNorm2d(hidden_dims[-1]),
+            nn.LeakyReLU(),
+            nn.Conv2d(hidden_dims[-1], 3, kernel_size=3, padding=1),
+            nn.Tanh()  # output in [-1, 1]
+        )
+
+    # ===============================================================
+    #                       ENCODER
+    # ===============================================================
+    def encode(self, x):
+        h = self.encoder(x)
+        h = torch.flatten(h, start_dim=1)
+        mu = self.fc_mu(h)
+        log_var = self.fc_var(h)
+        return mu, log_var
+
+    # ===============================================================
+    #                   REPARAMETERIZATION
+    # ===============================================================
+    def reparameterize(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    # ===============================================================
+    #                       DECODER
+    # ===============================================================
+    def decode(self, z):
+        h = self.decoder_input(z)
+        h = h.view(-1, 256, 2, 2)
+        h = self.decoder(h)
+        h = self.final_layer(h)
+        return h
+
+    # ===============================================================
+    #                       FORWARD PASS
+    # ===============================================================
+    def forward(self, x):
+        mu, log_var = self.encode(x)
+        z = self.reparameterize(mu, log_var)
+        recon = self.decode(z)
+        return recon, x, mu, log_var
+
