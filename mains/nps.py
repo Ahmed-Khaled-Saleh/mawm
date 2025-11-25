@@ -416,4 +416,5 @@ def train_demo(num_iters=20, batch_size=4):
 # -------------------------
 if __name__ == "__main__":
     encoder, proposer, world_model, reward_model = train_demo(num_iters=12, batch_size=6)
+    iter_dl = iter
     print("Demo finished.")

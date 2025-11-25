@@ -19,7 +19,7 @@ import torch.utils.data
 import numpy as np
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 13
+# %% ../../nbs/01c_data_loaders.ipynb 11
 class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-public-methods
     def __init__(self, agent, root, transform, buffer_size=200, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
         
@@ -95,7 +95,7 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
     def _data_per_sequence(self, data_length):
         raise NotImplementedError
 
-# %% ../../nbs/01c_data_loaders.ipynb 14
+# %% ../../nbs/01c_data_loaders.ipynb 12
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -127,7 +127,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), done, self.agent
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 29
+# %% ../../nbs/01c_data_loaders.ipynb 27
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -161,24 +161,50 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         super().__init__(agent, root, transform, buffer_size, train, obs_key)
         self._seq_len = seq_len
         self.agent = agent
-
+         
+    def __getitem__(self, i):
+        file_index = bisect(self._cum_size, i) - 1
+        seq_index = i - self._cum_size[file_index]
+        data = self._buffer[file_index]
+        
+        # Ensure we don't go past the episode boundary
+        episode_len = data['episode_len'].item()
+        max_start = episode_len - self._seq_len - 1
+        
+        if seq_index > max_start:
+            # This shouldn't happen if __len__ is correct
+            # But as a safety, clamp it
+            seq_index = max(0, max_start)
+        
+        return self._get_data(data, seq_index)
+    
     def _get_agent_data(self, data, seq_index):
         data_dict = {}
-
-        obs_data  = data[f'{self.agent}_obs'][seq_index:seq_index + self._seq_len + 1]
-        obs_data  = [self._transform(obs_data[i][self.obs_key].astype(np.uint8)) for i in range(len(obs_data))]
         
-        obs, next_obs = obs_data[:-1], obs_data[1:]
-        data_dict["obs"] = obs
-        data_dict["next_obs"] = next_obs
-
-        action = data[f'{self.agent}_act'][seq_index+1:seq_index + self._seq_len + 1]
-        action = action.astype(np.float32)
-        data_dict["act"] = action
-
-        data_dict["rew"] = data[f'{self.agent}_rew'][seq_index+1:seq_index + self._seq_len + 1].astype(np.float32)
+        # Get obs[t] and obs[t+1] for t in [seq_index, seq_index+seq_len)
+        obs_data = data[f'{self.agent}_obs'][seq_index:seq_index + self._seq_len + 1]
         
-        data_dict["info"] = data[f'{self.agent}_info'][seq_index+1:seq_index + self._seq_len + 1]
+        # Transform observations
+        obs_transformed = [self._transform(obs_data[i][self.obs_key].astype(np.uint8)) 
+                        for i in range(len(obs_data))]
+        
+        # obs[t] and next_obs[t] = obs[t+1]
+        obs = obs_transformed[:-1]        # length: seq_len
+        next_obs = obs_transformed[1:]    # length: seq_len
+        
+        # Get actions, rewards, info that correspond to transitions
+        # action[t] is the action taken at obs[t] leading to next_obs[t]
+        action = data[f'{self.agent}_act'][seq_index:seq_index + self._seq_len]
+        reward = data[f'{self.agent}_rew'][seq_index:seq_index + self._seq_len]
+        info = data[f'{self.agent}_info'][seq_index:seq_index + self._seq_len]
+        
+        # Stack obs into tensors for easier collation
+        data_dict["obs"] = torch.stack(obs)           # (seq_len, C, H, W)
+        data_dict["next_obs"] = torch.stack(next_obs) # (seq_len, C, H, W)
+        data_dict["act"] = torch.from_numpy(action.astype(np.float32))  # (seq_len, action_dim)
+        data_dict["rew"] = torch.from_numpy(reward.astype(np.float32))  # (seq_len,)
+        data_dict["info"] = info  # Keep as is or remove if not needed
+        
         return data_dict
 
     def _get_data(self, data, seq_index):
