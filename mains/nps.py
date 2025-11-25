@@ -11,13 +11,13 @@ from typing import List, Tuple
 # -------------------------
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-Z_DIM = 64
-ACTION_DIM = 8
+Z_DIM = 32
+ACTION_DIM = 1
 PROG_HID = 128
 PRIM_EMB = 32
 PARAM_EMB = 16
 PROG_RNN_HID = 128
-MSG_DIM = 48
+MSG_DIM = 32#23
 MAX_PARAMS = 2        # maximum params per primitive; everything is padded to this
 GRID_SIZE = 5
 BEAM_WIDTH = 5
@@ -153,27 +153,23 @@ class Proposer(nn.Module):
 # -------------------------
 # WorldModel θ
 # -------------------------
-class WorldModel(nn.Module):
-    def __init__(self, z_dim=Z_DIM, action_dim=ACTION_DIM, prog_dim=MSG_DIM, hidden=128):
-        super().__init__()
-        self.fc1 = nn.Linear(z_dim + action_dim + prog_dim, hidden)
-        self.fc_state = nn.Linear(hidden, z_dim)
-        self.fc_reward = nn.Linear(hidden, 1)
 
-    def forward(self, z_t: torch.FloatTensor, a_t: torch.FloatTensor, prog_emb: torch.FloatTensor):
-        x = torch.cat([z_t, a_t, prog_emb], dim=-1)
-        h = F.relu(self.fc1(x))
-        z_next = self.fc_state(h)
-        r = self.fc_reward(h).squeeze(-1)
-        return z_next, r
+
+from MAWM.models.worldmodel import WorldModel, RewardModel
+
+    
 
 # -------------------------
 # Energy (batch)
 # -------------------------
-def compute_energy_batch(z_pred_b, z_target_b, r_pred_b, r_target_b, lambda_z=LAMBDA_Z, lambda_r=LAMBDA_R):
+def _reward_loss(reward_dist, rewards):
+    reward_loss = -torch.mean(reward_dist.log_prob(rewards))
+    return reward_loss
+
+def compute_energy_batch(z_pred_b, z_target_b, reward_dist, rewards, lambda_z=LAMBDA_Z, lambda_r=LAMBDA_R):
     diff = torch.abs(z_pred_b - z_target_b).mean(dim=1)  # (Nc,)
     e_state = lambda_z * diff
-    e_reward = lambda_r * ((r_pred_b - r_target_b) ** 2)
+    e_reward = lambda_r * _reward_loss(reward_dist, rewards)  # scalar
     return e_state + e_reward  # (Nc,)
 
 # -------------------------
@@ -186,6 +182,7 @@ def neural_guided_beam_search(z_obs: torch.FloatTensor,
                               proposer: Proposer,
                               encoder: ProgramEncoder,
                               world_model: WorldModel,
+                              reward_model: RewardModel,
                               beam_width: int = BEAM_WIDTH,
                               topk: int = PROP_TOPK,
                               max_prog_len: int = MAX_PROG_LEN,
@@ -273,8 +270,9 @@ def neural_guided_beam_search(z_obs: torch.FloatTensor,
             z_target_b = z_target.repeat(Nc, 1)
             r_target_b = r_target.repeat(Nc)
             # Evaluate world model
-            z_pred_b, r_pred_b = world_model(z_b, a_b, prog_emb_batch)
-            energies = compute_energy_batch(z_pred_b, z_target_b, r_pred_b, r_target_b)  # (Nc,)
+            z_pred_b = world_model(z_b, a_b, prog_emb_batch)
+            reward_dist = reward_model(z_b, a_b)
+            energies = compute_energy_batch(z_pred_b, z_target_b, reward_dist, r_target_b)  # (Nc,)
 
             # Map back energies to expansions and form candidate beam entries
             for idx_e, entry in enumerate(expansions):
@@ -292,6 +290,7 @@ def neural_guided_beam_search(z_obs: torch.FloatTensor,
             if len(all_candidates) == 0:
                 break
             all_candidates.sort(key=lambda x: x[3], reverse=True)
+            
             beam = all_candidates[:beam_width]
             # update best
             for prog_cand, pidx, pparams, sc in beam:
@@ -300,7 +299,8 @@ def neural_guided_beam_search(z_obs: torch.FloatTensor,
                     best_energy = energy_here
                     best_program = prog_cand
         # end depth loop
-
+        # print(all_candidates[0])
+        # print("++"*20)
     if best_program is None:
         return Program(), float("inf")
     return best_program, best_energy
@@ -314,10 +314,12 @@ def train_demo(num_iters=20, batch_size=4):
     encoder = ProgramEncoder().to(DEVICE)
     proposer = Proposer().to(DEVICE)
     world_model = WorldModel().to(DEVICE)
+    reward_model = RewardModel().to(DEVICE)
 
-    wm_opt = torch.optim.Adam(list(world_model.parameters()) + list(encoder.parameters()), lr=LEARNING_RATE)
+    wm_opt = torch.optim.Adam(list(world_model.parameters()) + list(encoder.parameters()) + list(reward_model.parameters()), lr=LEARNING_RATE)
     prop_opt = torch.optim.Adam(proposer.parameters(), lr=LEARNING_RATE)
 
+    
     for it in range(num_iters):
         # Dummy batch: replace with your real CTDE data
         z_sender = torch.randn(batch_size, Z_DIM, device=DEVICE)
@@ -335,11 +337,11 @@ def train_demo(num_iters=20, batch_size=4):
             a_t = actions[b]
             r_t = rewards[b]
             P_star, energy = neural_guided_beam_search(z_obs, z_target, a_t, r_t,
-                                                       proposer, encoder, world_model,
+                                                       proposer, encoder, world_model, reward_model,
                                                        beam_width=BEAM_WIDTH, topk=PROP_TOPK,
                                                        max_prog_len=MAX_PROG_LEN,
                                                        grid_size=GRID_SIZE, device=DEVICE)
-            print(f"Iter {it} Sample {b} Inferred Program: {P_star} Energy: {energy:.4f}")
+
             inferred_programs.append(P_star)
             # get program embedding for training
             prim_ids, param_tensor = encode_program_for_network(P_star, max_params=MAX_PARAMS, device=DEVICE)
@@ -349,13 +351,15 @@ def train_demo(num_iters=20, batch_size=4):
             else:
                 msg = encoder(prim_ids, param_tensor).squeeze(0)  # (MSG_DIM,)
             inferred_msgs.append(msg)
+        # print("infered program is", "".join(str(p) for p in inferred_programs))
 
         # 2) M-step: update world model + encoder using inferred messages
         wm_opt.zero_grad()
         msgs_b = torch.stack(inferred_msgs, dim=0)  # (B, MSG_DIM)
-        z_pred, r_pred = world_model(z_sender, actions, msgs_b)
+        z_pred = world_model(z_sender, actions, msgs_b)
+        reward_dist = reward_model(z_sender, actions)
         loss_z = F.l1_loss(z_pred, z_receiver_next)
-        loss_r = F.mse_loss(r_pred, rewards)
+        loss_r = _reward_loss(reward_dist, rewards)
         loss_wm = LAMBDA_Z * loss_z + LAMBDA_R * loss_r
         loss_wm.backward()
         wm_opt.step()
@@ -405,11 +409,11 @@ def train_demo(num_iters=20, batch_size=4):
         if it % 1 == 0:
             print(f"iter {it} wm_loss {loss_wm.item():.4f} prop_loss {(loss_prop.item() if tot_tokens>0 else 0.0):.4f}")
 
-    return encoder, proposer, world_model
+    return encoder, proposer, world_model, reward_model
 
 # -------------------------
 # Run demo
 # -------------------------
 if __name__ == "__main__":
-    encoder, proposer, world_model = train_demo(num_iters=12, batch_size=6)
+    encoder, proposer, world_model, reward_model = train_demo(num_iters=12, batch_size=6)
     print("Demo finished.")
