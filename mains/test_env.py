@@ -32,7 +32,7 @@ while not done and step < config.env_cfg.max_steps:
     print(f"Step {step}: rewards = {rewards}, done = {done}")
     done = done['__all__']
     step += 1
- 
+import pdb; pdb.set_trace()
 
 env.close()
 
