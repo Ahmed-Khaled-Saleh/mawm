@@ -17,15 +17,15 @@ import torch.nn.functional as F
 
 MAX_PARAMS = 2
 
-def get_indices(program, max_params=MAX_PARAMS, device="cpu"):
+def get_indices(program, max_params=MAX_PARAMS, device="cpu", padding_vals=[-1, -1]):
     
     L = len(program.tokens)
     if L == 0:
         # Handle empty program as requested
         prim_ids = torch.zeros((1, 0), dtype=torch.long, device=device)
         param_tensor = torch.zeros((1, 0, max_params), dtype=torch.long, device=device)
-        prim_ids.add_(-1)
-        param_tensor.add_(-1)
+        prim_ids.add_(padding_vals[0])
+        param_tensor.add_(padding_vals[1])
         return prim_ids, param_tensor
 
     prim_ids_list = []
@@ -35,7 +35,7 @@ def get_indices(program, max_params=MAX_PARAMS, device="cpu"):
         p = list(params)[:max_params]
         if len(p) < max_params:
             # Padding parameters with -1
-            p = p + [-1] * (max_params - len(p))
+            p = p + [padding_vals[1]] * (max_params - len(p))
         params_list.append(p)
         
     prim_ids = torch.tensor([prim_ids_list], dtype=torch.long, device=device)          # (1, L)
@@ -48,42 +48,38 @@ def get_indices(program, max_params=MAX_PARAMS, device="cpu"):
 # final_batch_param_tensor shape: (2, 3, 2)
 
 # %% ../../nbs/02bb_models_program_embedder.ipynb 8
-def batchify_programs(batch_programs):
-    # --- Correct Batching Logic ---
+def batchify_programs(batch_programs, padding_vals=[-1, -1]):
     all_prim_tensors = []
     all_param_tensors = []
     max_len = 0
 
-    # 1. Get individual tensors and find max_len
     for program in batch_programs:
-        prim_ids, param_tensor = get_indices(program)
-        all_prim_tensors.append(prim_ids.squeeze(0))     # Remove the (1) batch dim: (L)
-        all_param_tensors.append(param_tensor.squeeze(0)) # Remove the (1) batch dim: (L, max_params)
+        prim_ids, param_tensor = get_indices(program, padding_vals=padding_vals)
+        all_prim_tensors.append(prim_ids.squeeze(0))     
+        all_param_tensors.append(param_tensor.squeeze(0))
         max_len = max(max_len, prim_ids.size(1))
 
-    # 2. Pad and Stack
+    # USE EOS AS PAD
+    PAD_PRIM = padding_vals[0]   # <---- IMPORTANT CHANGE
+    PAD_PARAM = padding_vals[1]       # parameters can remain -1
+
     padded_prim_ids = []
     padded_param_tensors = []
-    PAD_VALUE = -1 # Use -1 for padding as in your get_indices function
 
     for prim_t, param_t in zip(all_prim_tensors, all_param_tensors):
         L = prim_t.size(0)
-        
-        # Pad Prim IDs: (L) -> (L_max)
         pad_len = max_len - L
-        padded_prim_ids.append(F.pad(prim_t, (0, pad_len), value=PAD_VALUE))
         
-        # Pad Param Tensor: (L, max_p) -> (L_max, max_p)
-        # F.pad takes (padding_left, padding_right, padding_top, padding_bottom, ...)
-        padded_param_tensors.append(F.pad(param_t, (0, 0, 0, pad_len), value=PAD_VALUE))
+        padded_prim_ids.append(F.pad(prim_t, (0, pad_len), value=PAD_PRIM))   # <-- EOS PAD
 
-    # 3. Concatenate (Stack)
-    batch_prim_ids = torch.stack(padded_prim_ids, dim=0)    # (B, L_max)
-    batch_param_tensor = torch.stack(padded_param_tensors, dim=0) # (B, L_max, max_params)
+        padded_param_tensors.append(F.pad(param_t, (0, 0, 0, pad_len), value=PAD_PARAM))
+
+    batch_prim_ids = torch.stack(padded_prim_ids, dim=0)
+    batch_param_tensor = torch.stack(padded_param_tensors, dim=0)
     return batch_prim_ids, batch_param_tensor
 
 
-# %% ../../nbs/02bb_models_program_embedder.ipynb 17
+# %% ../../nbs/02bb_models_program_embedder.ipynb 18
 import torch
 import torch.nn as nn
 
@@ -104,7 +100,7 @@ class ProgramEmbedder(nn.Module):
         self.empty_name = nn.Parameter(torch.zeros(d_name))
         self.empty_param = nn.Parameter(torch.zeros(d_param))
         
-        self.name_embed = nn.Embedding(num_primitives, d_name)
+        self.name_embed = nn.Embedding(num_primitives + 1, d_name)
         self.param_embeds = nn.ModuleList([
             nn.Embedding(card, d_param) for card in param_cardinalities
         ])

@@ -41,12 +41,22 @@ LEARNING_RATE = 1e-4
 # Primitive templates (name, arity)
 # -------------------------
 PRIMITIVE_TEMPLATES = [
-    ("AgentAt", 2),
+    ("CellEmpty", 2),        # cell (i, j) is empty
+    ("CellObstacle", 2),
+    ("CellItem", 2),
+    ("CellGoal", 2),
+    ("CellAgent", 2),
+    # ("AgentAt", 2),
     ("GoalAt", 2),
-    ("ObstacleAt", 2),
+    # ("ObstacleAt", 2),
     ("ItemAt", 2),
     ("Near", 0),       # boolean style (no params)
+    ("SeeGoal", 0),
     ("CanMove", 1),    # direction (0..3)
+    ("OtherAgentAt", 2),
+    ("OtherAgentNear", 0),
+    ("OtherAgentDirection", 1)
+
 ]
 PRIM_NAME_TO_IDX = {name: i for i, (name, ar) in enumerate(PRIMITIVE_TEMPLATES)}
 NUM_PRIMS = len(PRIMITIVE_TEMPLATES)
@@ -57,12 +67,22 @@ print(PRIM_NAME_TO_IDX)
 # Program representation
 # -------------------------
 class Program:
-    def __init__(self, tokens: List[Tuple[int, List[float]]] = None):
+    def __init__(self, tokens: List[Tuple[int, List[float]]] = None, finished: bool = False):
         # tokens: list of (prim_idx, params_list)
         self.tokens = tokens or []
+        self.EOS_IDX = len(PRIMITIVE_TEMPLATES)
+        self.finished = finished
 
-    def extend(self, prim_idx: int, params: List[float]):
-        return Program(self.tokens + [(int(prim_idx), [float(p) for p in params])])
+
+    # def extend(self, prim_idx: int, params: List[float]):
+    #     return Program(self.tokens + [(int(prim_idx), [float(p) for p in params])])
+    def extend(self, prim_idx, params):
+        if self.finished:
+            return self  # don't extend finished programs
+        if prim_idx == self.EOS_IDX:
+            return Program(self.tokens, finished=True)
+        return Program(self.tokens + [(prim_idx, params)], finished=False)
+
 
     def __len__(self):
         return len(self.tokens)
@@ -70,6 +90,9 @@ class Program:
     def __repr__(self):
         if len(self.tokens) == 0:
             return "<EMPTY>"
+        elif len(self.tokens) == 1 and self.tokens[0][0] == -1:
+            return "<BOP>"
+        
         toks = []
         for pidx, params in self.tokens:
             name = PRIMITIVE_TEMPLATES[pidx][0]
