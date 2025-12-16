@@ -114,7 +114,7 @@ def fit(self: LejepaTrainer):
     for epoch in range(1, self.cfg.epochs + 1):
         train_loss = self.train_epoch(epoch)
         test_loss = self.eval_epoch()
-        self.scheduler.step(test_loss)
+        # self.scheduler.step(test_loss)
 
         # checkpointing
         best_filename = os.path.join(self.lejepa_dir, 'best.pth')
@@ -129,12 +129,12 @@ def fit(self: LejepaTrainer):
             'state_dict': self.model.state_dict(),
             'precision': test_loss,
             'optimizer': self.optimizer.state_dict(),
-            'scheduler': self.scheduler.state_dict(),
+            # 'scheduler': self.scheduler.state_dict(),
             # 'earlystopping': self.earlystopping.state_dict()
         }, is_best, filename, best_filename)
 
-        if self.earlystopping.early_stop(test_loss):             
-            break
+        # if self.earlystopping.early_stop(test_loss):             
+        #     break
        
 
         to_log = {
