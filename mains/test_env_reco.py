@@ -33,16 +33,22 @@ while not done:
         # import pdb; pdb.set_trace()
 
         o = obs[agent]['pov']
+        print(o.shape, o.dtype, np.min(o), np.max(o))
+        # save image
+        from PIL import Image
+        img = Image.fromarray(o.astype(np.uint8))
+        img.save(f"./agent_{i}_step_{step}.png")
+        break
         action = env.action_space.sample()
         actions[agent] = action
-    
+    break
     print(obs['global'].keys())
     next_obs, rewards, done, infos = env.step(actions) 
     print(f"Step {step}: rewards = {rewards}, done = {done}")
     done = done['__all__']
     step += 1
  
-env.export_frames(save_root=".")
+# env.export_frames(save_root=".")
 env.close()
 
 

@@ -57,7 +57,7 @@ class Proposer(nn.Module):
         z:              (B, obs_dim)
         p_embed:        (B, L, prog_embed_dim) - where prog_embed_dim = prog_emb_dim_prims + prog_emb_dim_x + prog_emb_dim_y
         """
-
+        # import ipdb; ipdb.set_trace()
         z_h = F.relu(self.obs_proj(z))      # z_h shape: (B, H)
         
         B, L, dim = p_embed.shape
