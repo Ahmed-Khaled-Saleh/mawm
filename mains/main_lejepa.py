@@ -95,7 +95,7 @@ def init_data(agent_id):
 
 
 def init_model():
-    model_cls = get_cls(f"MAWM.models.{cfg.model.name.lower()}", cfg.model.name)
+    model_cls = get_cls("MAWM.models.encoder", "VisionEncoder")
     model = model_cls(cfg.model.channels, cfg.model.latent_size)
     return model
 
