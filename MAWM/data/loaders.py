@@ -19,7 +19,7 @@ import torch.utils.data
 import numpy as np
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 12
+# %% ../../nbs/01c_data_loaders.ipynb 9
 class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-public-methods
     def __init__(self, agent, root, transform, buffer_size=200, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
         
@@ -95,7 +95,7 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
     def _data_per_sequence(self, data_length):
         raise NotImplementedError
 
-# %% ../../nbs/01c_data_loaders.ipynb 14
+# %% ../../nbs/01c_data_loaders.ipynb 11
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -127,7 +127,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), done, self.agent
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 35
+# %% ../../nbs/01c_data_loaders.ipynb 31
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -214,7 +214,7 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         return data_length - self._seq_len
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 45
+# %% ../../nbs/01c_data_loaders.ipynb 41
 import torch
 class LejepaVisionDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform, V=1):

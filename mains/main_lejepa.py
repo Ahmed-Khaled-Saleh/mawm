@@ -73,10 +73,13 @@ cfg.now = args.timestamp
 # cfg.data.batch_size = int(args.batch_size) if args.batch_size else cfg.data.batch_size
 # cfg.optimizer.name = args.optimizer if args.optimizer else cfg.optimizer.name
 
+
+void_transform = transforms.Lambda(lambda x: x)
+
 def init_data(agent_id):
     train_ds = RolloutObservationDataset(agent= agent_id,
                                         root= cfg.data.data_dir,
-                                        transform= None,
+                                        transform= void_transform,
                                         buffer_size= cfg.data.buffer_size,
                                         train=True,
                                         obs_key= cfg.data.obs_key
@@ -84,7 +87,7 @@ def init_data(agent_id):
         
     test_ds = RolloutObservationDataset(agent= agent_id,
                                         root= cfg.data.data_dir,
-                                        transform= None,
+                                        transform= void_transform,
                                         buffer_size= cfg.data.buffer_size,
                                         train=False,
                                         obs_key= cfg.data.obs_key
