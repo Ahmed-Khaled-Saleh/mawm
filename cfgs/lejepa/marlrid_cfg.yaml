@@ -28,8 +28,8 @@ data:
 model:
   name: encoder
   channels: 3
-  img_size: 42
-  latent_size: 42
+  img_size: 32
+  latent_size: 32
   grad_norm_clip: 1.0
 
 
