@@ -1,4 +1,4 @@
-project_name: lejepa_marlrid
+project_name: lejepa_marlgrid
 
 epochs: 300
 loss_fn: CrossEntropyLoss
