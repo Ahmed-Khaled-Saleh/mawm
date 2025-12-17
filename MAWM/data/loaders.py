@@ -127,7 +127,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), done, self.agent
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 22
+# %% ../../nbs/01c_data_loaders.ipynb 35
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -214,7 +214,7 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         return data_length - self._seq_len
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 32
+# %% ../../nbs/01c_data_loaders.ipynb 45
 import torch
 class LejepaVisionDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform, V=1):
