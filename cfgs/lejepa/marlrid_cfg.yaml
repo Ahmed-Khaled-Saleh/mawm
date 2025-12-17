@@ -4,12 +4,13 @@ epochs: 300
 loss_fn: CrossEntropyLoss
 writer: WandbWriter
 noreload: False
+lambda_: 0.05
 
 # save and log directories
 root_dir: /scratch/project_2009050/
 save_dir : models
 res_dir: results
-log_dir: ../logs
+log_dir: ./logs
 state_dir: aggregated_model_
 
 env:
@@ -25,7 +26,7 @@ data:
 
 
 model:
-  name: VAE
+  name: encoder
   channels: 3
   img_size: 42
   latent_size: 42

@@ -221,7 +221,8 @@ class LejepaVisionDataset(torch.utils.data.Dataset):
         self.V = V
         self.ds = dataset
         self.tf = transform
-
+        self.load_next_buffer = dataset.load_next_buffer
+        
     def __getitem__(self, i):
         img, done, agent = self.ds[i]
         return torch.stack([self.tf(img) for _ in range(self.V)]), done, agent
