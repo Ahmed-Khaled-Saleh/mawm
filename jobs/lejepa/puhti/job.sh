@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=project_2009050
-#SBATCH --job-name=vae
+#SBATCH --job-name=lejepa_marlrid
 #SBATCH --partition=gpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4

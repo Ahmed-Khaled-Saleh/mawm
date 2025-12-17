@@ -1,10 +1,10 @@
 project_name: lejepa_marlgrid
 
-epochs: 300
+epochs: 500
 loss_fn: CrossEntropyLoss
 writer: WandbWriter
 noreload: False
-lambda_: 0.05
+lambda_: 0.02
 
 # save and log directories
 root_dir: /scratch/project_2009050/
@@ -18,9 +18,9 @@ env:
 
 data:
   data_dir: /scratch/project_2009050/datasets/marl_grid/marl_grid_data
-  batch_size: 32
-  buffer_size: 10
-  V: 2
+  batch_size: 128
+  buffer_size: 5
+  V: 4
   obs_key: pov
   name: marlrid
 
