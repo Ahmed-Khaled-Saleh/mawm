@@ -111,7 +111,7 @@ class ResNet18(nn.Module):
         
         # Use Adaptive Pooling to handle the 6x6 -> 1x1 transition automatically
         self.adaptive_pool = nn.AdaptiveAvgPool2d((3, 3)) 
-        self.linear = nn.Linear(512 * 3 * 3, 10) # 4608 inputs
+        self.linear = nn.Linear(512 * 3 * 3, 512) # 4608 inputs
 
     def get_feature_space(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
@@ -128,5 +128,6 @@ class ResNet18(nn.Module):
     def forward(self, x):
         N, V = x.shape[:2]
         out = self.get_feature_space(x.flatten(0, 1))
+        print(out.shape)
         proj = self.linear(out)
         return proj.reshape(N, V, -1).transpose(0, 1)
