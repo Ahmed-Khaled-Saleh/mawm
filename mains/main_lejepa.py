@@ -95,7 +95,7 @@ def init_data(agent_id):
 
 
 def init_model():
-    model_cls = get_cls("MAWM.models.encoder", "VisionEncoder")
+    model_cls = get_cls("MAWM.models.encoder", "ResNet18")
     model = model_cls(cfg.model.channels, cfg.model.latent_size)
     return model
 
