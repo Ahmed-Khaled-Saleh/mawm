@@ -100,7 +100,8 @@ def train_epoch(self: ProgLejepaTrainer, epoch):
 # %% ../../nbs/05c_trainers_programJepa.ipynb 31
 @patch
 def eval_epoch(self: ProgLejepaTrainer):
-    self.model.eval()
+    self.v_encoder.eval()
+    self.p_encoder.eval()
     self.val_loader.dataset.load_next_buffer()
     test_loss = 0
     actual_len = 0
@@ -163,7 +164,8 @@ def fit(self: ProgLejepaTrainer):
 
         save_checkpoint({
             'epoch': epoch,
-            'state_dict': self.model.state_dict(),
+            'state_dict_vision': self.v_encoder.state_dict(),
+            'state_dict_program': self.p_encoder.state_dict(),
             'precision': test_loss,
             'optimizer': self.optimizer.state_dict(),
             # 'scheduler': self.scheduler.state_dict(),
