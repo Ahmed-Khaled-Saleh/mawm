@@ -79,7 +79,7 @@ void_transform = transforms.Lambda(lambda x: x)
 def init_data(agent_id):
     train_ds = RolloutObservationDataset(agent= agent_id,
                                         root= cfg.data.data_dir,
-                                        transform= void_transform,
+                                        transform= lejepa_train_tf,
                                         buffer_size= cfg.data.buffer_size,
                                         train=True,
                                         obs_key= cfg.data.obs_key
@@ -87,7 +87,7 @@ def init_data(agent_id):
         
     test_ds = RolloutObservationDataset(agent= agent_id,
                                         root= cfg.data.data_dir,
-                                        transform= void_transform,
+                                        transform= lejepa_test_tf,
                                         buffer_size= cfg.data.buffer_size,
                                         train=False,
                                         obs_key= cfg.data.obs_key

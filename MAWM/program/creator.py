@@ -83,8 +83,8 @@ def get_cell_color(cell):
     
 
 # %% ../../nbs/03_program.creator.ipynb 12
-def get_grid_chars(img, GRID=7, CELL=6): 
-    cells = [[cv2.cvtColor(img, cv2.COLOR_BGR2RGB)[j*CELL:(j+1)*CELL, i*CELL:(i+1)*CELL]
+def get_grid_chars(img, GRID=7, CELL=6): #cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    cells = [[img[j*CELL:(j+1)*CELL, i*CELL:(i+1)*CELL]
               for i in range(GRID)]
               for j in range(GRID)
             ]
