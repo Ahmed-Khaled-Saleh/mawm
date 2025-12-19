@@ -44,6 +44,7 @@ def train_epoch(self: LejepaTrainer, epoch):
     self.train_loader.dataset.load_next_buffer()
     
     train_loss = 0
+    actual_len = 0
     for batch_idx, data in enumerate(self.train_loader):
         # import pdb; pdb.set_trace()
         obs, dones, agent_id = data
@@ -69,11 +70,12 @@ def train_epoch(self: LejepaTrainer, epoch):
                 epoch, batch_idx * len(obs), len(self.train_loader.dataset),
                 100. * batch_idx / len(self.train_loader),
                 loss.item() / len(obs)))
+        actual_len += len(obs)
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
-        epoch, train_loss / len(self.train_loader.dataset)))
+        epoch, train_loss / actual_len))
 
-    return train_loss / len(self.train_loader.dataset)
+    return train_loss / actual_len
        
 
 # %% ../../nbs/05d_trainer_lejepa.ipynb 21
@@ -82,6 +84,7 @@ def eval_epoch(self: LejepaTrainer):
     self.model.eval()
     self.val_loader.dataset.load_next_buffer()
     test_loss = 0
+    actual_len = 0
     with torch.no_grad():
         for data in self.val_loader:
             obs, dones, agent_id = data
@@ -97,8 +100,9 @@ def eval_epoch(self: LejepaTrainer):
             sigreg_loss = self.sigreg(proj)
             loss = (1- self .lambda_) * inv_loss + self.lambda_ * sigreg_loss
             test_loss += loss.item()
+            actual_len += len(obs)
 
-    test_loss /= len(self.val_loader.dataset)
+    test_loss /= actual_len
     print('====> Test set loss: {:.4f}'.format(test_loss))
     return test_loss
 

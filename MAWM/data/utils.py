@@ -49,11 +49,11 @@ from torchvision.transforms import v2
 lejepa_train_tf = v2.Compose(
     [
         v2.ToPILImage(),
-        # v2.RandomResizedCrop(42, scale=(0.8, 1.0)), 
-        # v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
-        # v2.RandomGrayscale(p=0.2),
-        # v2.RandomApply([v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.1),
-        # v2.RandomHorizontalFlip(),
+        v2.RandomResizedCrop(42, scale=(0.8, 1.0)), 
+        v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+        v2.RandomGrayscale(p=0.2),
+        v2.RandomApply([v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.1),
+        v2.RandomHorizontalFlip(),
         v2.ToImage(),
         v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
@@ -65,7 +65,7 @@ lejepa_test_tf = v2.Compose(
             [
                 v2.ToPILImage(),
                 v2.Resize(42),
-                # v2.CenterCrop(42),
+                v2.CenterCrop(42),
                 v2.ToImage(),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
