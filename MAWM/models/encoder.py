@@ -126,10 +126,10 @@ class ResNet18(nn.Module):
         return out
 
     def forward(self, x):
-        N, V = x.shape[:2]
-        out = self.get_feature_space(x.flatten(0, 1))
+        # N, V = x.shape[:2]
+        out = self.get_feature_space(x)#x.flatten(0, 1)
         proj = self.linear(out)
-        return proj.reshape(N, V, -1).transpose(0, 1)
+        return proj# proj.reshape(N, V, -1).transpose(0, 1)
 
 # %% ../../nbs/02aa_models.encoder.ipynb 18
 class ResNet18_32(nn.Module):
