@@ -96,3 +96,10 @@ class BufferAwareConcatDataset(ConcatDataset):
                 print(f"Warning: Dataset {type(dataset)} is missing load_next_buffer()")
                 
         self.cumulative_sizes = self.cumsum(self.datasets)
+
+    @property
+    def num_buffers(self):
+        # Calculate how many buffers it takes to see all files once
+        # Using the first dataset as a reference
+        ds = self.datasets[0]
+        return (len(ds._files) + ds._buffer_size - 1) // ds._buffer_size
