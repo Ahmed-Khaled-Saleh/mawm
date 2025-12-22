@@ -18,8 +18,8 @@ import pandas as pd
 from .trainer import Trainer
 from ..core import *
 from ..models.utils import save_checkpoint
-from ..optimizer.losses import SIGReg
-from ..program.creator import create_specs_from_image, batchify_programs
+from ..losses.custom_loss import SIGReg
+from ..models.program.creator import create_specs_from_image, batchify_programs
 
 class ProgLejepaTrainer(Trainer):
     def __init__(self, cfg, v_encoder, p_encoder, train_loader, val_loader=None, 

@@ -12,11 +12,11 @@ from fastcore.utils import *
 # %% ../../../nbs/02i_models.worldmodel.predictor.ipynb 4
 import torch
 import torch.nn as nn
-from ..dense import DenseModel
+from ..base.dense import DenseModel
 
 
 # %% ../../../nbs/02i_models.worldmodel.predictor.ipynb 5
-from ..dense import DenseModel
+from ..base.dense import DenseModel
 class WorldModel(nn.Module):
     def __init__(
         self,

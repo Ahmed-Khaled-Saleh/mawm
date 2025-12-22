@@ -13,8 +13,8 @@ from fastcore.utils import *
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..dense import DenseModel
-from ..program_embedder import ProgramEmbedder
+from ..base.dense import DenseModel
+from .embedder import ProgramEmbedder
 from ...core import PRIMITIVE_TEMPLATES
 
 class ProgramEncoder(nn.Module):
@@ -59,8 +59,8 @@ class ProgramEncoder(nn.Module):
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..dense import DenseModel
-from ..program_embedder import ProgramEmbedder
+from ..base.dense import DenseModel
+from .embedder import ProgramEmbedder
 from ...core import PRIMITIVE_TEMPLATES
 
 class ProgramPredictor(nn.Module):

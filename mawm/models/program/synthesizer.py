@@ -14,7 +14,7 @@ from fastcore.utils import *
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..dense import DenseModel
+from ..base.dense import DenseModel
 
 
 class Proposer(nn.Module):

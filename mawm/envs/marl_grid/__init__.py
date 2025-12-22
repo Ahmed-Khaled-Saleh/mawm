@@ -20,8 +20,8 @@ import numpy.random as random
 import sys
 from gymnasium.envs.registration import register as gym_register
 
-from .envs.findgoal_env.findgoal import FindGoalMultiGrid
-from .envs.redbluedoors_envs.redbluedoors import RedBlueDoorsMultiGrid
+from .findgoal import FindGoalMultiGrid
+from .redbluedoors import RedBlueDoorsMultiGrid
 
 from .agents  import GridAgentInterface
 from .base import MultiGridEnv

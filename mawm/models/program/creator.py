@@ -13,6 +13,7 @@ from fastcore.utils import *
 # %% ../../../nbs/02g_model.program.creator.ipynb 5
 import cv2
 import numpy as np
+import torch
 def get_graphics_primitives(img_np):
     img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     pixels = img.reshape(-1, 3)
