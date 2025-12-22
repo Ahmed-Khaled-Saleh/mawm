@@ -15,7 +15,7 @@ import argparse
 import json
 from easydict import EasyDict as edict
 
-from .grid_world_environment import get_env_name
+from ...env_creator import get_env_name
 from .utils import cprint
 
 
