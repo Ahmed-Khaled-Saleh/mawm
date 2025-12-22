@@ -20,12 +20,13 @@ import numpy as np
 
 
 # %% ../../nbs/01c_data_loaders.ipynb 9
-class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-public-methods
-    def __init__(self, agent, root, transform, buffer_size=200, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
+class _RolloutDataset(torch.utils.data.Dataset): 
+    def __init__(self, agent, root, transform, buffer_size=200, seq_len= 50, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
         
         self.agent = agent
         self._transform = transform
         self.obs_key = obs_key
+        self.seq_len = seq_len
         self._files = [join(root, sd) for sd in listdir(root)]
 
         def train_test_split(files, train):
@@ -41,19 +42,27 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         self._buffer_index = 0
         self._buffer_size = buffer_size
 
-    # def sample_sequence(self, rollout, agent, seq_len):
+    def sample_sequence(self, rollout, agent, seq_len):
 
-    #     episode_len = rollout["episode_len"].item()
+        episode_len = rollout["episode_len"].item()
+        start = np.random.randint(0, episode_len)
+        start = min(start, episode_len - seq_len)
+        print(f"Sampling sequence for {agent} from index {start} to {start + seq_len}")
 
-    #     # sample start index uniformly in [0, episode_len)
-    #     start = np.random.randint(0, episode_len)
+        end = start + seq_len
 
-    #     # clamp so the sequence fits
-    #     start = min(start, episode_len - seq_len)
-    #     print(f"Sampling sequence for {agent} from index {start} to {start + seq_len}")
+        obs = rollout[f"{agent}_obs"][start:end]
+        rew = rollout[f"{agent}_rew"][start:end]
+        act = rollout[f"{agent}_act"][start:end]
+        info = rollout[f"{agent}_info"][start:end]
 
-    #     end = start + seq_len
-    #     return start, end
+        data = {
+            f"{agent}_obs": obs,
+            f"{agent}_rew": rew,
+            f"{agent}_act": act,
+            f"{agent}_info": info
+        }
+        return data
 
     def load_next_buffer(self):
         """ Loads next buffer """
@@ -70,8 +79,9 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
 
         for f in self._buffer_fnames:
             with np.load(f, allow_pickle= True) as data:
-                self._buffer += [{k: np.copy(v) for k, v in data.items()}] # list of dicts,each dict is an episode data
-                self._cum_size += [self._cum_size[-1] + data['episode_len'].item()]
+                rollout = self.sample_sequence(data, self.agent, self.seq_len)
+                self._buffer += [rollout] # list of dicts,each dict is an episode data
+                self._cum_size += [self._cum_size[-1] + self.seq_len]
             pbar.update(1)
         pbar.close()
 
@@ -86,8 +96,14 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
         # binary search through cum_size
         file_index = bisect(self._cum_size, i) - 1
         seq_index = i - self._cum_size[file_index]
-        data = self._buffer[file_index] # list of a dict
+        data = self._buffer[file_index]
         return self._get_data(data, seq_index)
+    
+    def reset_buffer(self):
+        self._buffer = None
+        self._cum_size = None
+        self._buffer_fnames = None
+        self._buffer_index = 0  
 
     def _get_data(self, data, seq_index):
         raise NotImplementedError
@@ -97,37 +113,18 @@ class _RolloutDataset(torch.utils.data.Dataset): # pylint: disable=too-few-publi
 
 # %% ../../nbs/01c_data_loaders.ipynb 11
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
-    """ Encapsulates rollouts.
 
-    Rollouts should be stored in subdirs of the root directory, in the form of npz files,
-    each containing a dictionary with the keys:
-        - observations: (rollout_len, *obs_shape)
-        - actions: (rollout_len, action_size)
-        - rewards: (rollout_len,)
-        - terminals: (rollout_len,), boolean
-
-     As the dataset is too big to be entirely stored in rams, only chunks of it
-     are stored, consisting of a constant number of files (determined by the
-     buffer_size parameter).  Once built, buffers must be loaded with the
-     load_next_buffer method.
-
-    Data are then provided in the form of images
-
-    :args root: root directory of data sequences
-    :args seq_len: number of timesteps extracted from each rollout
-    :args transform: transformation of the observations
-    :args train: if True, train data, else test
-    """
     def _data_per_sequence(self, data_length):
         return data_length
 
     def _get_data(self, data, seq_index):
         done = data[f'{self.agent}_info'][seq_index]['done']
         obs = data[f'{self.agent}_obs'][seq_index][self.obs_key].astype(np.uint8)
-        return self._transform(obs), done, self.agent
+        act = data[f'{self.agent}_act'][seq_index]
+        return self._transform(obs), act, done, self.agent
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 31
+# %% ../../nbs/01c_data_loaders.ipynb 38
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -214,7 +211,7 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         return data_length - self._seq_len
 
 
-# %% ../../nbs/01c_data_loaders.ipynb 41
+# %% ../../nbs/01c_data_loaders.ipynb 48
 import torch
 class LejepaVisionDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform, V=1):

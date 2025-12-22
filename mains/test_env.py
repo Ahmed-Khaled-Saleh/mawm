@@ -22,7 +22,7 @@ while not done and step < config.env_cfg.max_steps:
     actions = {agent: None for agent in agents}
     latents = []
     for i, agent in enumerate(agents):
-
+        
         o = obs[agent]['pov']
         action = env.action_space.sample()
         actions[agent] = action

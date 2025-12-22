@@ -97,6 +97,21 @@ class BufferAwareConcatDataset(ConcatDataset):
                 
         self.cumulative_sizes = self.cumsum(self.datasets)
 
+
+    def reset_buffer(self):
+        """
+        Iterates through all underlying datasets and calls their 
+        reset_buffer method.
+        """
+        for dataset in self.datasets:
+            if hasattr(dataset, 'reset_buffer'):
+                dataset.reset_buffer()
+            else:
+                print(f"Warning: Dataset {type(dataset)} is missing reset_buffer()")
+                
+        self.cumulative_sizes = self.cumsum(self.datasets)
+
+
     @property
     def num_buffers(self):
         # Calculate how many buffers it takes to see all files once

@@ -81,6 +81,7 @@ wandb
 # Scrapy stuff:
 .scrapy
 *.mp4
+*.gif
 # Sphinx documentation
 docs/_build/
 

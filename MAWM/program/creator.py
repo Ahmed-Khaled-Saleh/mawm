@@ -124,7 +124,7 @@ def create_specs_from_image(
     program_tokens = wall_tokens + empty_tokens
     if goal_index:
         program_tokens += [(PRIM_NAME_TO_IDX["CellGoal"], [goal_index[0], goal_index[1]])]
-        program_tokens += [(PRIM_NAME_TO_IDX["SeeGoal"])]
+        # program_tokens += [(PRIM_NAME_TO_IDX["SeeGoal"])]
 
     if blueagent_index:
         program_tokens += [(PRIM_NAME_TO_IDX["CellAgent"], [blueagent_index[0], blueagent_index[1]])]

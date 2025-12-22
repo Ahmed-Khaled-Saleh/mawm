@@ -41,52 +41,19 @@ class LejepaTrainer(Trainer):
 @patch
 def train_epoch(self: LejepaTrainer, epoch):
     self.model.train()
-    self.train_loader.dataset.load_next_buffer()
+    
     
     train_loss = 0
     actual_len = 0
-    for batch_idx, data in enumerate(self.train_loader):
-        # import pdb; pdb.set_trace()
-        obs, dones, agent_id = data
-        mask = ~dones.bool()     # keep only where done is False
 
-        if mask.sum() == 0:
-            continue  # entire batch is terminals
-
-        obs = obs[mask]          # filter observations
-        obs = obs.to(self.device)
-
-        self.optimizer.zero_grad()
-        proj = self.model(obs)
-        inv_loss = (proj.mean(0) - proj).square().mean()
-        sigreg_loss = self.sigreg(proj)
-        loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
+    while True:
+        try:
+            self.train_loader.dataset.load_next_buffer()
+        except:
+            break
         
-        loss.backward()
-        train_loss += loss.item()
-        self.optimizer.step()
-        if batch_idx % 20 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(obs), len(self.train_loader.dataset),
-                100. * batch_idx / len(self.train_loader),
-                loss.item() / len(obs)))
-        actual_len += len(obs)
+        for batch_idx, data in enumerate(self.train_loader):
 
-    print('====> Epoch: {} Average loss: {:.4f}'.format(
-        epoch, train_loss / actual_len))
-
-    return train_loss / actual_len
-       
-
-# %% ../../nbs/05d_trainer_lejepa.ipynb 21
-@patch
-def eval_epoch(self: LejepaTrainer):
-    self.model.eval()
-    self.val_loader.dataset.load_next_buffer()
-    test_loss = 0
-    actual_len = 0
-    with torch.no_grad():
-        for data in self.val_loader:
             obs, dones, agent_id = data
             mask = ~dones.bool()     # keep only where done is False
 
@@ -95,12 +62,68 @@ def eval_epoch(self: LejepaTrainer):
 
             obs = obs[mask]          # filter observations
             obs = obs.to(self.device)
+
+            self.optimizer.zero_grad()
+
             proj = self.model(obs)
             inv_loss = (proj.mean(0) - proj).square().mean()
             sigreg_loss = self.sigreg(proj)
-            loss = (1- self .lambda_) * inv_loss + self.lambda_ * sigreg_loss
-            test_loss += loss.item()
-            actual_len += len(obs)
+            
+            loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
+            train_loss += loss.item()
+            
+            loss.backward()
+            self.optimizer.step()
+            actual_len += obs.size(0)         
+            
+
+            if batch_idx % 20 == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(obs), len(self.train_loader.dataset),
+                    100. * batch_idx / len(self.train_loader),
+                    loss.item() / len(obs)))
+                
+            
+
+    print('====> Epoch: {} Average loss: {:.4f}'.format(
+            epoch, train_loss / actual_len))
+
+    return train_loss / actual_len
+       
+
+# %% ../../nbs/05d_trainer_lejepa.ipynb 21
+@patch
+def eval_epoch(self: LejepaTrainer):
+    self.model.eval()
+
+    test_loss = 0
+    actual_len = 0
+
+    with torch.no_grad():
+        while True:
+            try:
+                self.val_loader.dataset.load_next_buffer()
+            except:
+                break
+
+            for batch_idx, data in enumerate(self.val_loader):
+                obs, dones, agent_id = data
+                mask = ~dones.bool()     # keep only where done is False
+
+                if mask.sum() == 0:
+                    continue  # entire batch is terminals
+
+                obs = obs[mask]          # filter observations
+                obs = obs.to(self.device)
+
+                proj = self.model(obs)
+                inv_loss = (proj.mean(0) - proj).square().mean()
+                sigreg_loss = self.sigreg(proj)
+                
+                loss = (1 - self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
+                test_loss += loss.item()
+                actual_len += obs.size(0)
+
 
     test_loss /= actual_len
     print('====> Test set loss: {:.4f}'.format(test_loss))
@@ -118,7 +141,6 @@ def fit(self: LejepaTrainer):
     for epoch in range(1, self.cfg.epochs + 1):
         train_loss = self.train_epoch(epoch)
         test_loss = self.eval_epoch()
-        # self.scheduler.step(test_loss)
 
         # checkpointing
         best_filename = os.path.join(self.lejepa_dir, 'best.pth')
@@ -128,18 +150,13 @@ def fit(self: LejepaTrainer):
         if is_best:
             cur_best = test_loss
 
-        save_checkpoint({
+        state = {
             'epoch': epoch,
             'state_dict': self.model.state_dict(),
-            'precision': test_loss,
+            'test_loss': test_loss,
             'optimizer': self.optimizer.state_dict(),
-            # 'scheduler': self.scheduler.state_dict(),
-            # 'earlystopping': self.earlystopping.state_dict()
-        }, is_best, filename, best_filename)
-
-        # if self.earlystopping.early_stop(test_loss):             
-        #     break
-       
+        }
+        save_checkpoint(state= state, is_best= is_best, filename= filename, best_filename= best_filename)
 
         to_log = {
             "train_loss": train_loss, 
@@ -149,6 +166,9 @@ def fit(self: LejepaTrainer):
         self.writer.write(to_log)
         df = pd.DataFrame.from_records([{"epoch": epoch ,"train_loss": train_loss, "test_loss":test_loss}], index= "epoch")
         lst_dfs.append(df)
+
+        self.train_loader.dataset.reset_buffer()
+        self.val_loader.dataset.reset_buffer()
 
     df_res = pd.concat(lst_dfs)
     df_reset = df_res.reset_index()

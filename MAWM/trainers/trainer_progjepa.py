@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['ProgLejepaTrainer', 'linear_probing']
 
-# %% ../../nbs/05c_trainers_programJepa.ipynb 4
+# %% ../../nbs/05c_trainers_programJepa.ipynb 3
 from fastcore import *
 from fastcore.utils import *
 from torchvision.utils import save_image
@@ -14,7 +14,7 @@ import os
 from torch import nn
 import pandas as pd
 
-# %% ../../nbs/05c_trainers_programJepa.ipynb 29
+# %% ../../nbs/05c_trainers_programJepa.ipynb 27
 from .trainer import Trainer
 from ..core import *
 from ..models.utils import save_checkpoint
@@ -45,72 +45,27 @@ class ProgLejepaTrainer(Trainer):
 
     
 
-# %% ../../nbs/05c_trainers_programJepa.ipynb 30
+# %% ../../nbs/05c_trainers_programJepa.ipynb 29
 @patch
 def train_epoch(self: ProgLejepaTrainer, epoch):
     self.v_encoder.train()
     self.p_encoder.train()
-    self.train_loader.dataset.load_next_buffer()
+
+    train_loss = 0
+    actual_len = 0
+
     def denormalize(tensor):
         return tensor * 0.5 + 0.5
     
-    train_loss = 0
-    actual_len = 0
-    for batch_idx, data in enumerate(self.train_loader):
-        # import pdb; pdb.set_trace()
-        obs, dones, agent_id = data
-        mask = ~dones.bool()     # keep only where done is False
+    
+    while True:
+        try:
+            self.train_loader.dataset.load_next_buffer()
+        except:
+            break
+    
+        for batch_idx, data in enumerate(self.train_loader):
 
-        if mask.sum() == 0:
-            continue  # entire batch is terminals
-
-        obs = obs[mask]          # filter observations
-
-        programs = [create_specs_from_image(denormalize(img).permute(1, 2, 0).numpy()) for img in obs]
-        batch_prim_ids, batch_param_tensor = batchify_programs(programs)
-
-        batch_prim_ids = batch_prim_ids.to(self.device)
-        batch_param_tensor = batch_param_tensor.to(self.device)
-        obs = obs.to(self.device)
-
-        self.optimizer.zero_grad()
-
-        img_proj = self.v_encoder(obs)
-        prog_proj = self.p_encoder(batch_prim_ids, batch_param_tensor)
-
-        sigreg_loss = self.sigreg(img_proj) + self.sigreg(prog_proj)
-        inv_loss = (img_proj.mean(0) - prog_proj).square().mean()
-        loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
-        
-        loss.backward()
-        train_loss += loss.item()
-        self.optimizer.step()
-        actual_len += len(obs)
-        if batch_idx % 20 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(obs), len(self.train_loader.dataset),
-                100. * batch_idx / len(self.train_loader),
-                loss.item() / len(obs)))
-
-    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss / actual_len))
-
-    return train_loss / actual_len
-       
-
-# %% ../../nbs/05c_trainers_programJepa.ipynb 31
-@patch
-def eval_epoch(self: ProgLejepaTrainer):
-    self.v_encoder.eval()
-    self.p_encoder.eval()
-    self.val_loader.dataset.load_next_buffer()
-    test_loss = 0
-    actual_len = 0
-
-    def denormalize(tensor):
-        return tensor * 0.5 + 0.5
-        
-    with torch.no_grad():
-        for data in self.val_loader:
             obs, dones, agent_id = data
             mask = ~dones.bool()     # keep only where done is False
 
@@ -118,6 +73,7 @@ def eval_epoch(self: ProgLejepaTrainer):
                 continue  # entire batch is terminals
 
             obs = obs[mask]          # filter observations
+
             programs = [create_specs_from_image(denormalize(img).permute(1, 2, 0).numpy()) for img in obs]
             batch_prim_ids, batch_param_tensor = batchify_programs(programs)
 
@@ -132,20 +88,81 @@ def eval_epoch(self: ProgLejepaTrainer):
 
             sigreg_loss = self.sigreg(img_proj) + self.sigreg(prog_proj)
             inv_loss = (img_proj.mean(0) - prog_proj).square().mean()
+
             loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
-            test_loss += loss.item()
+            train_loss += loss.item()
+            
+            loss.backward()
+            self.optimizer.step()
+
             actual_len += len(obs)
+            
+            if batch_idx % 20 == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(obs), len(self.train_loader.dataset),
+                    100. * batch_idx / len(self.train_loader),
+                    loss.item() / len(obs)))
+
+    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss / actual_len))
+
+    return train_loss / actual_len
+       
+
+# %% ../../nbs/05c_trainers_programJepa.ipynb 30
+@patch
+def eval_epoch(self: ProgLejepaTrainer):
+    self.v_encoder.eval()
+    self.p_encoder.eval()
+
+    def denormalize(tensor):
+        return tensor * 0.5 + 0.5
+
+    test_loss = 0
+    actual_len = 0
+    while True:
+        try:
+            self.val_loader.dataset.load_next_buffer()
+        except:
+            break
+
+        with torch.no_grad():
+            for data in self.val_loader:
+                obs, dones, agent_id = data
+                mask = ~dones.bool()     # keep only where done is False
+
+                if mask.sum() == 0:
+                    continue  # entire batch is terminals
+
+                obs = obs[mask]          # filter observations
+                programs = [create_specs_from_image(denormalize(img).permute(1, 2, 0).numpy()) for img in obs]
+                batch_prim_ids, batch_param_tensor = batchify_programs(programs)
+
+                batch_prim_ids = batch_prim_ids.to(self.device)
+                batch_param_tensor = batch_param_tensor.to(self.device)
+                obs = obs.to(self.device)
+
+                self.optimizer.zero_grad()
+
+                img_proj = self.v_encoder(obs)
+                prog_proj = self.p_encoder(batch_prim_ids, batch_param_tensor)
+
+                sigreg_loss = self.sigreg(img_proj) + self.sigreg(prog_proj)
+                inv_loss = (img_proj.mean(0) - prog_proj).square().mean()
+                
+                loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss
+                test_loss += loss.item()
+                actual_len += obs.size(0)
             
     test_loss /= actual_len
     print('====> Test set loss: {:.4f}'.format(test_loss))
     return test_loss
 
 
-# %% ../../nbs/05c_trainers_programJepa.ipynb 32
+# %% ../../nbs/05c_trainers_programJepa.ipynb 31
 def linear_probing(self: ProgLejepaTrainer):
     pass
 
-# %% ../../nbs/05c_trainers_programJepa.ipynb 33
+# %% ../../nbs/05c_trainers_programJepa.ipynb 32
 import wandb
 
 @patch
@@ -156,9 +173,7 @@ def fit(self: ProgLejepaTrainer):
     for epoch in range(1, self.cfg.epochs + 1):
         train_loss = self.train_epoch(epoch)
         test_loss = self.eval_epoch()
-        # self.scheduler.step(test_loss)
 
-        # checkpointing
         best_filename = os.path.join(self.prog_lejepa_dir, 'best.pth')
         filename = os.path.join(self.prog_lejepa_dir, 'checkpoint.pth')
 
@@ -166,15 +181,13 @@ def fit(self: ProgLejepaTrainer):
         if is_best:
             cur_best = test_loss
 
-        save_checkpoint({
+        state = {
             'epoch': epoch,
-            'state_dict_vision': self.v_encoder.state_dict(),
-            'state_dict_program': self.p_encoder.state_dict(),
-            'precision': test_loss,
+            'state_dict': self.model.state_dict(),
+            'test_loss': test_loss,
             'optimizer': self.optimizer.state_dict(),
-            # 'scheduler': self.scheduler.state_dict(),
-            # 'earlystopping': self.earlystopping.state_dict()
-        }, is_best, filename, best_filename)
+        }
+        save_checkpoint(state= state, is_best= is_best, filename= filename, best_filename= best_filename)
 
         to_log = {
             "train_loss": train_loss, 
@@ -184,6 +197,9 @@ def fit(self: ProgLejepaTrainer):
         self.writer.write(to_log)
         df = pd.DataFrame.from_records([{"epoch": epoch ,"train_loss": train_loss, "test_loss":test_loss}], index= "epoch")
         lst_dfs.append(df)
+
+        self.train_loader.dataset.reset_buffer()
+        self.val_loader.dataset.reset_buffer()
 
     df_res = pd.concat(lst_dfs)
     df_reset = df_res.reset_index()
