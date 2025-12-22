@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from MAWM.core import Program, PRIMITIVE_TEMPLATES
-from MAWM.models.program_embedder import batchify_programs
-from MAWM.models.program_encoder import ProgramEncoder
-from MAWM.models.program_synthizer import Proposer
+from mawm.core import Program, PRIMITIVE_TEMPLATES
+from mawm.models.program_embedder import batchify_programs
+from mawm.models.program_encoder import ProgramEncoder
+from mawm.models.program_synthizer import Proposer
 
 @torch.no_grad()
 def neural_guided_beam_search2(

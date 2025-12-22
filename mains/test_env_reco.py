@@ -1,6 +1,6 @@
-from MAWM.envs.marl_grid.envs.findgoal_env.environments import make_environment
-from MAWM.envs.marl_grid.envs.findgoal_env.cfgs import config
-from MAWM.envs.marl_grid.utils import GridRecorder
+from mawm.envs.marl_grid.envs.findgoal_env.environments import make_environment
+from mawm.envs.marl_grid.envs.findgoal_env.cfgs import config
+from mawm.envs.marl_grid.utils import GridRecorder
 import numpy as np
 config.env_cfg.seed = 0#np.random.randint(0, 10000)
 config.env_cfg.max_steps = 2000

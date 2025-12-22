@@ -19,13 +19,13 @@ from dotenv import load_dotenv
 
 
 
-from MAWM.core import get_cls, PRIMITIVE_TEMPLATES
+from mawm.core import get_cls, PRIMITIVE_TEMPLATES
 
-from MAWM.data.utils import lejepa_train_tf, lejepa_test_tf, BufferAwareConcatDataset
-from MAWM.data.loaders import RolloutObservationDataset
+from mawm.data.utils import lejepa_train_tf, lejepa_test_tf, BufferAwareConcatDataset
+from mawm.data.loaders import RolloutObservationDataset
 
-from MAWM.trainers.trainer_progjepa import ProgLejepaTrainer
-from MAWM.writers.wandb_writer import WandbWriter
+from mawm.trainers.trainer_progjepa import ProgLejepaTrainer
+from mawm.writers.wandb_writer import WandbWriter
 
 
 # cfg = OmegaConf.load(join("../cfgs", "vae", "cfg.yaml"))

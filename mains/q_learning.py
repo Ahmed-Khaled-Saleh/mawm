@@ -1,6 +1,6 @@
 import numpy as np
 import gym
-from MAWM.envs.marl_grid._envs import env_from_config
+from mawm.envs.marl_grid._envs import env_from_config
 
 
 class QLearningAgent:
@@ -106,8 +106,8 @@ class QLearningAgent:
 # env = env_from_config(env_config)
 
 
-from MAWM.envs.marl_grid.envs.findgoal_env.environments import make_environment
-from MAWM.envs.marl_grid.envs.findgoal_env.cfgs import config
+from mawm.envs.marl_grid.envs.findgoal_env.environments import make_environment
+from mawm.envs.marl_grid.envs.findgoal_env.cfgs import config
 config.env_cfg.seed = 42
 config.env_cfg.max_steps = 10000
 create_env = lambda: make_environment(config.env_cfg)

@@ -155,7 +155,7 @@ class Proposer(nn.Module):
 # -------------------------
 
 
-from MAWM.models.worldmodel import WorldModel, RewardModel
+from mawm.models.worldmodel import WorldModel, RewardModel
 
     
 

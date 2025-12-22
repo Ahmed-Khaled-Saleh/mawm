@@ -19,14 +19,14 @@ from dotenv import load_dotenv
 
 
 
-from MAWM.core import get_cls
+from mawm.core import get_cls
 
-from MAWM.data.utils import transform_train, transform_test, BufferAwareConcatDataset
-from MAWM.data.loaders import RolloutObservationDataset
+from mawm.data.utils import transform_train, transform_test, BufferAwareConcatDataset
+from mawm.data.loaders import RolloutObservationDataset
 
-from MAWM.optimizer.utils import ReduceLROnPlateau, EarlyStopper
-from MAWM.trainers.vae_trainer import VAETrainer
-from MAWM.writers.wandb_writer import WandbWriter
+from mawm.optimizer.utils import ReduceLROnPlateau, EarlyStopper
+from mawm.trainers.vae_trainer import VAETrainer
+from mawm.writers.wandb_writer import WandbWriter
 
 
 # cfg = OmegaConf.load(join("../cfgs", "vae", "cfg.yaml"))
