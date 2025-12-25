@@ -20,6 +20,8 @@ class DictObservationNormalizationWrapper(gym.Wrapper):
         super().__init__(env)
         self.agents = env.agents
         self.render = env.render
+        self.get_goal = env.get_goal
+        self.get_layout = env.get_layout
         return
 
     def step(self, action):
@@ -30,8 +32,10 @@ class DictObservationNormalizationWrapper(gym.Wrapper):
 
             if isinstance(v, dict):
                 obs_dict[k]['pov'] = (2. * ((v['pov'] / 255.) - 0.5))
+                # ensure dtype is float32
+                obs_dict[k]['pov'] = obs_dict[k]['pov'].astype(np.float32)
             else:
-                obs_dict[k] = (2. * ((v / 255.) - 0.5))
+                obs_dict[k] = (2. * ((v / 255.) - 0.5)).astype(np.float32)
         return obs_dict, rew_dict, done_dict, info_dict
 
 
@@ -41,6 +45,8 @@ class GridWorldEvaluatorWrapper(gym.Wrapper):
         self.video_scale = 2
         self.agents = env.agents
         self.render = env.render
+        self.get_goal = env.get_goal
+        self.get_layout = env.get_layout
         self.show_reward = True
         return
 
@@ -173,6 +179,8 @@ class GridRecorder(gym.core.Wrapper):
             ):
         super().__init__(env)
         self.agents = env.agents
+        self.get_goal = env.get_goal
+        self.get_layout = env.get_layout
         self.frames = None
         self.ptr = 0
         self.reset_count = 0

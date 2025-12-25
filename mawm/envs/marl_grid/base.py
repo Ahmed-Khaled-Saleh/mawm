@@ -24,7 +24,7 @@ from minigrid.utils.rendering import fill_coords, point_in_rect, downsample, hig
 
 from typing import Optional
 from .agents import GridAgentInterface
-from .objects import Wall, Goal, COLORS
+from .objects import Wall, Goal, COLORS, GridAgent
 
 TILE_PIXELS = 32
 
@@ -510,6 +510,8 @@ class MultiGridEnv(gym.Env):
             raise ValueError('Agent must be active to have obs grid.')
 
         topX, topY, botX, botY = agent.get_view_exts()
+        # rot_k = (3 - agent.dir) % 4
+        # rot_k = (4 - agent.dir) % 4
 
         if agent.see_through_walls:
             # return view without rotation
@@ -766,32 +768,32 @@ class MultiGridEnv(gym.Env):
 
                         if isinstance(fwd_cell, Goal):
                             agent.done = True
+                
+                # # Pick up an object
+                # elif action == agent.actions.pickup:
+                #     if fwd_cell and fwd_cell.can_pickup():
+                #         if agent.carrying is None:
+                #             agent.carrying = fwd_cell
+                #             agent.carrying.cur_pos = np.array([-1, -1])
+                #             self.grid.set(*fwd_pos, None)
+                #     else:
+                #         pass
 
-                # Pick up an object
-                elif action == agent.actions.pickup:
-                    if fwd_cell and fwd_cell.can_pickup():
-                        if agent.carrying is None:
-                            agent.carrying = fwd_cell
-                            agent.carrying.cur_pos = np.array([-1, -1])
-                            self.grid.set(*fwd_pos, None)
-                    else:
-                        pass
+                # # Drop an object
+                # elif action == agent.actions.drop:
+                #     if not fwd_cell and agent.carrying:
+                #         self.grid.set(*fwd_pos, agent.carrying)
+                #         agent.carrying.cur_pos = fwd_pos
+                #         agent.carrying = None
+                #     else:
+                #         pass
 
-                # Drop an object
-                elif action == agent.actions.drop:
-                    if not fwd_cell and agent.carrying:
-                        self.grid.set(*fwd_pos, agent.carrying)
-                        agent.carrying.cur_pos = fwd_pos
-                        agent.carrying = None
-                    else:
-                        pass
-
-                # Toggle/activate an object
-                elif action == agent.actions.toggle:
-                    if fwd_cell:
-                        fwd_cell.toggle(agent, fwd_pos)
-                    else:
-                        pass
+                # # Toggle/activate an object
+                # elif action == agent.actions.toggle:
+                #     if fwd_cell:
+                #         fwd_cell.toggle(agent, fwd_pos)
+                #     else:
+                #         pass
 
                 # Done action (same as "do nothing")
                 elif action == agent.actions.done:
@@ -926,6 +928,7 @@ class MultiGridEnv(gym.Env):
         highlight_mask = np.full((self.width, self.height), False,
                                  dtype=bool)
         for agent in self.agents:
+            # print("SEE THROUGH: ", agent.see_through_walls)
             if agent.active:
                 xlow, ylow, xhigh, yhigh = agent.get_view_exts()
                 dxlow, dylow = max(0, 0 - xlow), max(0, 0 - ylow)
@@ -1004,7 +1007,7 @@ class MultiGridEnv(gym.Env):
         return img
 
 
-# %% ../../../nbs/00d_envs.marlgrid.base.ipynb 8
+# %% ../../../nbs/00d_envs.marlgrid.base.ipynb 9
 def get_goal_observation_before_reaching(env, agent, goal_obj):
     """
     Generate the observation the agent would see one step BEFORE reaching the goal.

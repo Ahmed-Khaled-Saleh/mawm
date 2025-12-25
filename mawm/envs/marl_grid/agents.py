@@ -77,18 +77,18 @@ class GridAgentInterface(GridAgent):
         left = 2  # Move left
         up = 3  # Move up
         done = 4  # Done completing task / Stay
-        toggle = 5  # Toggle/activate an object
-        pickup = 6  # Pick up an object
-        drop = 7  # Drop an object
+        # toggle = 5  # Toggle/activate an object
+        # pickup = 6  # Pick up an object
+        # drop = 7  # Drop an object
 
     # class actions(IntEnum):
     #     left = 0  # Rotate left
     #     right = 1  # Rotate right
     #     forward = 2  # Move forward
-    #     pickup = 3  # Pick up an object
-    #     drop = 4  # Drop an object
-    #     toggle = 5  # Toggle/activate an object
-    #     done = 6  # Done completing task
+    #     # pickup = 3  # Pick up an object
+    #     # drop = 4  # Drop an object
+    #     # toggle = 5  # Toggle/activate an object
+    #     done = 3  # Done completing task
 
     class skills(IntEnum):
         none = 0
@@ -199,17 +199,17 @@ class GridAgentInterface(GridAgent):
             if self.observe_rewards:
                 obs_space['reward'] = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                      shape=(),
-                                                     dtype=float)
+                                                     dtype=np.float32)
             if self.observe_position:
                 # discrete position space is handled in base.py
                 obs_space['position'] = gym.spaces.Box(low=0, high=1,
                                                        shape=(n_agents, 2),
-                                                       dtype=float)
+                                                       dtype=np.float32)
             if self.observe_self_position:
                 # discrete position space is handled in base.py
                 obs_space['selfpos'] = gym.spaces.Box(low=0, high=1,
                                                       shape=(2,),
-                                                      dtype=float)
+                                                      dtype=np.float32)
             if self.observe_done:
                 obs_space['done'] = gym.spaces.Discrete(n=2)
             if self.observe_self_env_act:
@@ -219,7 +219,7 @@ class GridAgentInterface(GridAgent):
             if self.observe_t:
                 obs_space['t'] = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(),
-                                                dtype=float)
+                                                dtype=np.float32)
             if self.observe_identity:
                 obs_space['identity'] = gym.spaces.Discrete(n=2)
             if self.observe_comm:
@@ -357,6 +357,7 @@ class GridAgentInterface(GridAgent):
         """
         assert self.dir >= 0 and self.dir < 4
         return np.array([[1, 0], [0, 1], [-1, 0], [0, -1]])[self.dir]
+        # return np.array([[-1, 0], [1, 0], [0, 1], [0, -1]])[self.dir]
 
     @property
     def right_vec(self):
@@ -411,6 +412,7 @@ class GridAgentInterface(GridAgent):
         Get the extents of the square set of tiles visible to the agent
         Note: the bottom extent indices are not included in the set
         """
+        
         if self.see_through_walls:
             # Make everything easier by using a fixed orientation
             topX = self.pos[0] - self.view_size // 2
@@ -441,6 +443,7 @@ class GridAgentInterface(GridAgent):
 
         return topX, topY, botX, botY
 
+  
     def relative_coords(self, x, y):
         """
         Check if a grid position belongs to the agent's field of view, and

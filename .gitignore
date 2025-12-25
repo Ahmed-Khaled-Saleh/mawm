@@ -72,6 +72,10 @@ meltingpot_data/data/
 # Django stuff:
 *.log
 *.pdf
+*.arrow
+*.json
+*.npy
+*.pkl
 local_settings.py
 
 # Flask stuff:

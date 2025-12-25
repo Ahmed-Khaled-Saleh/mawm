@@ -22,6 +22,9 @@ def dis_func(x, y, k=1):
 
 
 # %% ../../../nbs/00h_envs.marl_grid.findgoal.ipynb 5
+import gymnasium as gym
+from typing import Optional 
+
 class FindGoalMultiGrid(MultiGridEnv):
     """
     A single cluttered room with a green goal at random position.
@@ -35,6 +38,8 @@ class FindGoalMultiGrid(MultiGridEnv):
         n_clutter = config.get('n_clutter')
         clutter_density = config.get('clutter_density')
         randomize_goal = config.get('randomize_goal')
+        self.spawn_without_goal_view = config.get('spawn_without_goal_view', True)
+        self.min_goal_spawn_distance = config.get('min_goal_spawn_distance', 7)
 
         if (n_clutter is None) == (clutter_density is None):
             raise ValueError('Must provide n_clutter or clutter_density.')
@@ -87,35 +92,165 @@ class FindGoalMultiGrid(MultiGridEnv):
         }
         return obs
 
-    def reset(self, seed: int = None, options: dict = None):
-        obs_dict = MultiGridEnv.reset(self, seed=seed, options=options)
+    # def reset(self, seed: int = None, options: dict = None):
+    #     obs_dict = MultiGridEnv.reset(self, seed=seed, options=options)
 
+    #     if self.num_adversaries < 0:
+    #         # need to count number of adversaries in the env
+    #         self.adv_indices = set()
+    #         for i, agent in enumerate(self.agents):
+    #             if agent.is_adversary:
+    #                 self.adv_indices.add(i)
+    #         self.num_adversaries = len(self.adv_indices)
+
+    #         obs_dict['global'] = self.gen_global_obs()
+    #         return obs_dict
+
+    #     else:
+    #         # randomize adv indices each episode
+    #         adv_indices = np.random.choice([i for i in range(self.num_agents)],
+    #                                        self.num_adversaries,
+    #                                        replace=False)
+    #         for i, agent in enumerate(self.agents):
+    #             if i in adv_indices:
+    #                 agent.is_adversary = True
+    #             else:
+    #                 agent.is_adversary = False
+    #         self.adv_indices = adv_indices
+
+    #         obs_dict['global'] = self.gen_global_obs()
+    #         return obs_dict
+
+    # def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+    #     """
+    #     Modified reset that ensures agents don't spawn with goal visible.
+    #     """
+    #     # Do the parent's agent reset logic manually
+    #     for agent in self.agents:
+    #         agent.agents = []
+    #         agent.reset(new_episode=True)
+
+    #     # Generate grid and goal (this is done in parent's reset)
+    #     self.goal_pos = self._gen_grid(self.width, self.height)
+        
+    #     # Define rejection function based on config
+    #     if self.spawn_without_goal_view:
+    #         def reject_spawn_fn(pos):
+    #             """Reject positions too close to goal (goal might be visible)"""
+    #             dist = abs(pos[0] - self.goal_pos[0]) + abs(pos[1] - self.goal_pos[1])
+    #             return dist < self.min_goal_spawn_distance
+    #     else:
+    #         reject_spawn_fn = None
+        
+    #     # Place agents with rejection function
+    #     for agent in self.agents:
+    #         if agent.spawn_delay == 0:
+    #             self.place_obj(
+    #                 agent, 
+    #                 reject_fn=reject_spawn_fn,
+    #                 max_tries=1000,  # Increase tries since we're constraining placement
+    #                 **self.agent_spawn_kwargs
+    #             )
+    #             agent.activate()
+
+    #     self.step_count = 0
+    #     obs = self.gen_obs()
+    #     obs_dict = {f'agent_{i}': obs[i] for i in range(len(obs))}
+        
+    #     # Your existing adversary logic
+    #     if self.num_adversaries < 0:
+    #         # need to count number of adversaries in the env
+    #         self.adv_indices = set()
+    #         for i, agent in enumerate(self.agents):
+    #             if agent.is_adversary:
+    #                 self.adv_indices.add(i)
+    #         self.num_adversaries = len(self.adv_indices)
+    #     else:
+    #         # randomize adv indices each episode
+    #         adv_indices = np.random.choice(
+    #             [i for i in range(self.num_agents)],
+    #             self.num_adversaries,
+    #             replace=False
+    #         )
+    #         for i, agent in enumerate(self.agents):
+    #             if i in adv_indices:
+    #                 agent.is_adversary = True
+    #             else:
+    #                 agent.is_adversary = False
+    #         self.adv_indices = adv_indices
+        
+    #     obs_dict['global'] = self.gen_global_obs()
+    #     return obs_dict
+    
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        """
+        Override reset to add goal visibility constraint during agent placement.
+        
+        This replicates MultiGridEnv.reset() but adds a rejection function
+        for agent placement.
+        """
+        # Only call gym.Env.reset() for proper seeding (not MultiGridEnv.reset())
+        # gym.Env.reset() just handles seeding and returns empty info
+        gym.Env.reset(self, seed=seed)
+        
+        # Now do MultiGridEnv's reset logic with our modifications
+        for agent in self.agents:
+            agent.agents = []
+            agent.reset(new_episode=True)
+
+        # Generate grid and goal
+        self.goal_pos = self._gen_grid(self.width, self.height)
+        
+        # Define rejection function if enabled
+        if self.spawn_without_goal_view:
+            def reject_spawn_fn(pos):
+                """Reject positions too close to goal (where goal might be visible)"""
+                dist = abs(pos[0] - self.goal_pos[0]) + abs(pos[1] - self.goal_pos[1])
+                return dist < self.min_goal_spawn_distance
+        else:
+            reject_spawn_fn = None
+        
+        # Place agents with our custom rejection function
+        for agent in self.agents:
+            if agent.spawn_delay == 0:
+                self.place_obj(
+                    agent,
+                    reject_fn=reject_spawn_fn,  # Add rejection function
+                    max_tries=1000,  # Increase max tries
+                    **self.agent_spawn_kwargs
+                )
+                agent.activate()
+
+        self.step_count = 0
+        obs = self.gen_obs()
+        obs_dict = {f'agent_{i}': obs[i] for i in range(len(obs))}
+        
+        # FindGoalMultiGrid-specific: handle adversaries
         if self.num_adversaries < 0:
-            # need to count number of adversaries in the env
+            # Count number of adversaries in the env
             self.adv_indices = set()
             for i, agent in enumerate(self.agents):
                 if agent.is_adversary:
                     self.adv_indices.add(i)
             self.num_adversaries = len(self.adv_indices)
-
-            obs_dict['global'] = self.gen_global_obs()
-            return obs_dict
-
         else:
-            # randomize adv indices each episode
-            adv_indices = np.random.choice([i for i in range(self.num_agents)],
-                                           self.num_adversaries,
-                                           replace=False)
+            # Randomize adversary indices each episode
+            adv_indices = np.random.choice(
+                [i for i in range(self.num_agents)],
+                self.num_adversaries,
+                replace=False
+            )
             for i, agent in enumerate(self.agents):
                 if i in adv_indices:
                     agent.is_adversary = True
                 else:
                     agent.is_adversary = False
             self.adv_indices = adv_indices
-
-            obs_dict['global'] = self.gen_global_obs()
-            return obs_dict
-
+        
+        obs_dict['global'] = self.gen_global_obs()
+        return obs_dict
+    
+    
     def _get_reward(self, rwd, agent_no):
         step_rewards = np.zeros((len(self.agents, )), dtype=float)
         env_rewards = np.zeros((len(self.agents, )), dtype=float)
@@ -234,3 +369,142 @@ class FindGoalMultiGrid(MultiGridEnv):
         obs_dict['global'] = self.gen_global_obs()
         return obs_dict, rew_dict, done_dict, info_dict
 
+
+# %% ../../../nbs/00h_envs.marl_grid.findgoal.ipynb 6
+@patch
+def get_goal(self:FindGoalMultiGrid, agent, goal_pos, direction=None):
+    """
+    Generate the observation the agent would see one step BEFORE reaching the goal.
+    
+    Args:
+        agent: The agent object
+        goal_pos: np.arrray[(gx, gy)] of goal position
+        direction: Optional specific direction to approach from (0=right, 1=down, 2=left, 3=up)
+                   If None, tries all 4 directions and returns the first valid one
+    
+    Returns:
+        obs: The observation image, or None if goal is unreachable
+        approach_dir: The direction used to approach the goal
+    """
+    # Unwrap environment if needed
+    # print(type(self))
+    if hasattr(self, 'env'):
+        env = self.env
+    else:
+        env = self
+    
+    gx, gy = goal_pos[0], goal_pos[1]
+    
+    # Save original agent state
+    old_pos = agent.pos.copy() if agent.pos is not None else None
+    old_dir = agent.dir
+    
+    # Direction vectors: 0=right, 1=down, 2=left, 3=up
+    dir_vecs = {
+        0: np.array([1, 0]),   # right
+        1: np.array([0, 1]),   # down
+        2: np.array([-1, 0]),  # left
+        3: np.array([0, -1]),  # up
+    }
+    
+    # If direction specified, try only that one; otherwise try all 4
+    directions_to_try = [direction] if direction is not None else [0, 1, 2, 3]
+    
+    for try_dir in directions_to_try:
+        # Compute position one step before goal when approaching from this direction
+        # If agent is at pre_pos facing try_dir, moving forward reaches the goal
+        fv = dir_vecs[try_dir]
+        goal_pre_pos = np.array([gx, gy]) - fv
+        
+        # Check if this position is valid (inside grid)
+        if (goal_pre_pos[0] < 0 or goal_pre_pos[0] >= env.width or
+            goal_pre_pos[1] < 0 or goal_pre_pos[1] >= env.height):
+            continue
+        
+        # Check if this position is walkable (not a wall)
+        cell_at_pre_pos = env.grid.get(*goal_pre_pos)
+        if cell_at_pre_pos is not None and not cell_at_pre_pos.can_overlap():
+            continue  # Can't stand here (wall or blocking object)
+        
+        # Valid position found! Temporarily place agent here
+        try:
+            # Remove agent from old position (if it was placed)
+            if old_pos is not None:
+                old_cell = env.grid.get(*old_pos)
+                if old_cell == agent:
+                    env.grid.set(*old_pos, None)
+                elif old_cell is not None and hasattr(old_cell, 'agents'):
+                    if agent in old_cell.agents:
+                        old_cell.agents.remove(agent)
+            
+            # Place agent at pre-goal position facing the goal
+            agent.pos = goal_pre_pos
+            agent.dir = try_dir
+            
+            # Handle if there's already something at this position
+            if cell_at_pre_pos is not None and cell_at_pre_pos.can_overlap():
+                # Temporarily add agent to this cell's agent list
+                if not hasattr(cell_at_pre_pos, 'agents'):
+                    cell_at_pre_pos.agents = []
+                cell_at_pre_pos.agents.append(agent)
+                placed_in_agents = True
+            else:
+                # Place agent directly
+                env.grid.set(*goal_pre_pos, agent)
+                placed_in_agents = False
+            
+            # Generate observation
+            obs = env.gen_agent_obs(agent, image_only=True)
+            
+            # Restore agent to original position
+            if placed_in_agents:
+                cell_at_pre_pos.agents.remove(agent)
+            else:
+                env.grid.set(*goal_pre_pos, None)
+            
+            if old_pos is not None:
+                env.grid.set(*old_pos, agent)
+                agent.pos = old_pos
+            else:
+                agent.pos = None
+            agent.dir = old_dir
+            
+            return obs, try_dir
+            
+        except Exception as e:
+            # Restore state on error
+            if old_pos is not None:
+                env.grid.set(*old_pos, agent)
+                agent.pos = old_pos
+            else:
+                agent.pos = None
+            agent.dir = old_dir
+            raise e
+    
+    # No valid approach direction found
+    print(f"Warning: Goal at ({gx}, {gy}) is unreachable - surrounded by walls")
+    return None, None
+
+
+
+# %% ../../../nbs/00h_envs.marl_grid.findgoal.ipynb 7
+import cv2
+@patch
+def get_layout(self: FindGoalMultiGrid, video_scale = 8, render_kwargs={}):
+    for agent in self.agents:
+        agent.active = False
+    layout = self.render(mode="rgb_array", show_more=True, show_agent_views= False,
+                                        **render_kwargs)
+
+    if isinstance(layout, list) or len(layout.shape) > 3:
+        layout = layout[0]
+
+    if video_scale != 1:
+        layout = cv2.resize(layout, None,
+                                fx=video_scale,
+                                fy=video_scale,
+                                interpolation=cv2.INTER_AREA)
+
+    for agent in self.agents:
+        agent.active = True
+    return layout

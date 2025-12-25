@@ -1,15 +1,14 @@
-from mawm.envs.marl_grid.envs.findgoal_env.environments import make_environment
-from mawm.envs.marl_grid.envs.findgoal_env.cfgs import config
-from mawm.envs.marl_grid.utils import GridRecorder
+from mawm.envs.marl_grid import make_env
+from mawm.envs.marl_grid.cfg import config
+from mawm.envs.marl_grid.wrappers import GridRecorder
 import numpy as np
-config.env_cfg.seed = 0#np.random.randint(0, 10000)
+
+config.env_cfg.seed = np.random.randint(0, 10000)
 config.env_cfg.max_steps = 2000
-create_env = lambda: make_environment(config.env_cfg)
+env = make_env(config.env_cfg)
 
-env = create_env()
-# print(env.max_steps)
 env = GridRecorder(env, save_root=".", render_kwargs={"tile_size": 11}, max_steps=config.env_cfg.max_steps)
-
+env.recording = True
 
 class Action: 
     right = 0 # Move right 
@@ -21,47 +20,51 @@ class Action:
     pickup = 6 # Pick up an object 
     drop = 7 # Drop an object
 
-action_mapping = {
-    0: "right",
-    1: "down",
-    2: "left",
-    3: "up",
-    4: "done",
-    5: "toggle",
-    6: "pickup",
-    7: "drop",  
-    }
+# action_mapping = {
+#     0: "right",
+#     1: "down",
+#     2: "left",
+#     3: "up",
+#     4: "done",
+#     5: "toggle",
+#     6: "pickup",
+#     7: "drop",  
+#     }
 
 # action_mapping = {
-#     0: "left",
-#     1: "right",
-#     2: "forward",
-#     3: "pickup",
-#     4: "drop",
-#     5: "toggle",
-#     6: "done",
-# }
+#     0: "Left",
+#     1: "Right",
+#     2: "Forward",
+#     3: "Done"
+#     }
+action_mapping = {
+    0: "Right",
+    1: "Down",
+    2: "Left",
+    3: "Up",
+    4: "Done",
+    }
+
 
 
 agents = [f'agent_{i}' for i in range(config.env_cfg.num_agents)]
 
-# done = False
-# step = 0
 lst_actions = [] 
 lst_dirs = []
-# import pdb; pdb.set_trace()
-# obs = env.reset()
-# env.recording = True
-# gx, gy = obs['global']['goal_pos'][0], obs['global']['goal_pos'][1]
-# goal_obs = get_goal_observation_before_reaching(env, env.agents[0], (gx, gy))
-# import pdb;pdb.set_trace()
-lst_dirs.append({f"agent_{i}": (agent.dir, agent.pos) for i, agent in enumerate(env.agents)})
-
 done = False
 step = 0
 
+import numpy as np
+
+
 obs = env.reset()
-env.recording = True
+goal_pos = obs['global']['goal_pos']
+goals  = {}
+for i, agent in enumerate(agents):
+    goal =  env.get_goal(agent= env.agents[i], goal_pos= (goal_pos[0], goal_pos[1]))
+    goals[agent] = goal
+
+
 lst_dirs.append({f"agent_{i}": (agent.dir, agent.pos) for i, agent in enumerate(env.agents)})
 
 while step < 100:
@@ -83,6 +86,10 @@ while step < 100:
 env.export_frames(save_root=".")
 np.save("actions.npy", np.array(lst_actions))
 np.save("directions.npy", np.array(lst_dirs))
+import pickle
+with open("goals.pkl", "wb") as f:
+    pickle.dump(goals, f)
+
 env.close()
 
 

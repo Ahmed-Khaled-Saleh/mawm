@@ -67,7 +67,7 @@ def make_agents(
         n_adversaries=0,
         see_through_walls=True,
         neutral_shape=True,
-        can_overlap=True,
+        can_overlap=False,
         observe_orientation=True
 ):
     colors = ['red', 'blue', 'purple', 'orange', 'olive', 'pink']
@@ -334,7 +334,6 @@ def env_from_config(env_config, randomize_seed=True):
 import gymnasium as gym
 import numpy as np
 from easydict import EasyDict as edict
-# from mawm.envs.marl_grid._envs import register_env
 
 def create_grid_world_env(env_cfg):
     """
@@ -348,7 +347,7 @@ def create_grid_world_env(env_cfg):
         grid_size=env_cfg.grid_size,
         view_size=env_cfg.view_size,
         view_tile_size=env_cfg.view_tile_size,
-        comm_dim=2,
+        comm_dim=0,
         comm_len=env_cfg.comm_len,
         discrete_comm=env_cfg.discrete_comm,
         n_adversaries=0,
