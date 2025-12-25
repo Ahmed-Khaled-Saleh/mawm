@@ -11,7 +11,7 @@ def collect_one_rollout_ds(args):
     rollout_idx, seed, seed_steps, data_dir = args
 
     cfg = copy.deepcopy(config)
-    cfg.env_cfg.seed = seed
+    cfg.env_cfg.seed = int(seed)
     cfg.env_cfg.max_steps = seed_steps
 
     env = make_env(cfg.env_cfg)
