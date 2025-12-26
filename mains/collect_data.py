@@ -1,13 +1,11 @@
 
+import copy
 import os
 import numpy as np
-from datasets import Dataset
 from mawm.envs.marl_grid import make_env
 from mawm.envs.marl_grid.cfg import config
-from datasets import Features, Value, Array3D, List
-import copy
 
-def collect_one_rollout_ds(args):
+def collect_one_rollout_numpy(args):
     rollout_idx, seed, seed_steps, data_dir = args
 
     cfg = copy.deepcopy(config)
@@ -25,9 +23,8 @@ def collect_one_rollout_ds(args):
     
     layout = env.get_layout(render_kwargs={"tile_size":11})
 
-    # Initialize data dictionary
     agent_data = {
-        ag: {k: [] for k in ["obs", "next_obs", "selfpos", "orientation", "sees_goal", "act", "rew", "done"]}
+        ag: {k: [] for k in ["obs", "act", "next_obs", "selfpos", "orientation", "sees_goal", "rew", "done"]}
         for ag in agents
     }
 
@@ -35,22 +32,23 @@ def collect_one_rollout_ds(args):
     success = False
     success_at = -1
 
-    prev_obs = obs
     for t in range(seed_steps):
+        current_obs = obs
         actions = {ag: env.action_space.sample() for ag in agents}
         obs, rew, done, info = env.step(actions)
-
+        
         for ag in agents:
-            agent_data[ag]["obs"].append(prev_obs[ag]["pov"])
-            agent_data[ag]["next_obs"].append(obs[ag]["pov"])
-            agent_data[ag]["selfpos"].append(obs[ag]["selfpos"])
-            agent_data[ag]["orientation"].append(obs[ag]["orientation"])
-            agent_data[ag]["sees_goal"].append(info[ag]["sees_goal"])
-            agent_data[ag]["act"].append(actions[ag])
-            agent_data[ag]["rew"].append(rew[ag])
-            agent_data[ag]["done"].append(info[ag]["done"])
+            agent_data[ag]["obs"].append(current_obs[ag]["pov"])# list of ndarrays
+            agent_data[ag]["act"].append(actions[ag]) # actions are list of int64
+            agent_data[ag]["next_obs"].append(obs[ag]["pov"])# list of ndarrays
 
-        prev_obs = obs
+            agent_data[ag]["selfpos"].append(obs[ag]["selfpos"])# list of ndarrays
+            agent_data[ag]["orientation"].append(obs[ag]["orientation"])# list of int64
+            agent_data[ag]["sees_goal"].append(info[ag]["sees_goal"])# list of np.int64
+
+            agent_data[ag]["rew"].append(rew[ag])# list of float64
+            agent_data[ag]["done"].append(info[ag]["done"])# list of bools
+
         episode_len += 1
         if done["__all__"]:
             success = all(info[ag]["done"] for ag in agents)
@@ -58,66 +56,35 @@ def collect_one_rollout_ds(args):
             break
 
     env.close()
- 
-    rows = []
-
-    T = len(agent_data[agents[0]]["obs"])
-
-    for t in range(T):
-        row = {}
-
-        for ag in agents:
-            row[f"{ag}_obs"] = agent_data[ag]["obs"][t].astype(np.float32)
-            row[f"{ag}_next_obs"] = agent_data[ag]["next_obs"][t].astype(np.float32)
-            row[f"{ag}_selfpos"] = agent_data[ag]["selfpos"][t].astype(np.float32)
-            row[f"{ag}_orientation"] = int(agent_data[ag]["orientation"][t])
-            row[f"{ag}_sees_goal"] = bool(agent_data[ag]["sees_goal"][t])
-            row[f"{ag}_act"] = int(agent_data[ag]["act"][t])
-            row[f"{ag}_rew"] = float(agent_data[ag]["rew"][t])
-            row[f"{ag}_done"] = bool(agent_data[ag]["done"][t])
-
-        row['transition_idx'] = int(t)
-        row['rollout_idx'] = int(rollout_idx)
-        rows.append(row)
-
-
-    feat_dict = {}
+    
+    save_path = os.path.join(data_dir, f"rollout_{rollout_idx}.npz")
+    os.makedirs(data_dir, exist_ok=True)
+    save_dict = {}
 
     for ag in agents:
-        feat_dict[f"{ag}_obs"] = Array3D(shape=(42, 42, 3), dtype="float32")
-        feat_dict[f"{ag}_next_obs"] = Array3D(shape=(42, 42, 3), dtype="float32")
-        feat_dict[f"{ag}_selfpos"] = List(Value('float32'))
-        feat_dict[f"{ag}_act"] = Value("int32")
-        feat_dict[f"{ag}_rew"] = Value("float32")
-        feat_dict[f"{ag}_orientation"] = Value("int32")
-        feat_dict[f"{ag}_sees_goal"] = Value("bool")
-        feat_dict[f"{ag}_done"] = Value("bool")
+        save_dict[f"{ag}_obs"] = np.stack(agent_data[ag]["obs"]).astype(np.uint8)
+        save_dict[f"{ag}_act"] = np.asarray(agent_data[ag]["act"])
+        save_dict[f"{ag}_next_obs"] = np.stack(agent_data[ag]["next_obs"]).astype(np.uint8)
+        save_dict[f"{ag}_done"] = np.asarray(agent_data[ag]["done"])
 
-    feat_dict.update({
-        "transition_idx": Value("int32"),
-        "rollout_idx": Value("int32"),
-    })
+        save_dict[f"{ag}_rew"] = np.asarray(agent_data[ag]["rew"])
+        save_dict[f"{ag}_selfpos"] = np.stack(agent_data[ag]["selfpos"])
+        save_dict[f"{ag}_orientation"] = np.asarray(agent_data[ag]["orientation"])
+        save_dict[f"{ag}_sees_goal"] = np.asarray(agent_data[ag]["sees_goal"])
 
-    features = Features(feat_dict)    
-    dataset = Dataset.from_list(rows, features=features)
-    rollout_save_path = os.path.join(data_dir, f"rollout_{rollout_idx}")
-    dataset.save_to_disk(rollout_save_path)
-    meta_data_path = os.path.join(rollout_save_path, f"metadata_{rollout_idx}.npz")
+    save_dict['goal_pos'] = goal_pos
+    save_dict['episode_len'] = episode_len
+    save_dict['success'] = success
+    save_dict['success_at'] = success_at
+    save_dict['seed'] = config.env_cfg.seed
+    save_dict['layout'] = layout
+    save_dict['goal_obs'] = goal_obs
 
-    meta_data = {}
-    meta_data['goal_pos'] = goal_pos
-    meta_data['episode_len'] = episode_len
-    meta_data['success'] = success
-    meta_data['success_at'] = success_at
-    meta_data['seed'] = config.env_cfg.seed
-    meta_data['layout'] = layout
-    meta_data['goal_obs'] = goal_obs
-
-    np.savez(meta_data_path, **meta_data)
+    np.savez_compressed(save_path, **save_dict)
+    print(f"> Saved rollout {rollout_idx} to {save_path}")
     
     return rollout_idx
     
-
 
 from multiprocessing import Pool, cpu_count
 
@@ -142,7 +109,7 @@ def generate_parallel(
     ]
 
     with Pool(processes=workers) as p:
-        for idx in p.imap_unordered(collect_one_rollout_ds, args):
+        for idx in p.imap_unordered(collect_one_rollout_numpy, args):
             print(f"✓ rollout {idx} done")
 
 if __name__ == "__main__":

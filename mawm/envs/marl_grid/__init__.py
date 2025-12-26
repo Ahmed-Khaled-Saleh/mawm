@@ -391,8 +391,8 @@ def make_env(env_cfg, lock=None):
 
     assert env_name.startswith('MarlGrid')
     env = create_grid_world_env(env_cfg)
-    env = GridWorldEvaluatorWrapper(env)
-    env = DictObservationNormalizationWrapper(env)
+    # env = GridWorldEvaluatorWrapper(env)
+    # env = DictObservationNormalizationWrapper(env)
 
     return env
 

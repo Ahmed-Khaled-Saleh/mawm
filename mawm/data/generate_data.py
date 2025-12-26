@@ -15,7 +15,7 @@ def normalize(img):
 # img = obs['agent_0']['pov']
 
 
-# %% ../../nbs/01a_data.generate_data.ipynb 65
+# %% ../../nbs/01a_data.generate_data.ipynb 74
 import numpy as np
 import os
 from ..envs.marl_grid import make_env
@@ -147,7 +147,7 @@ def generate_data_marl_grid_np(
     
     print(f"\nData generation complete! {rollouts} rollouts saved to {data_dir}")
 
-# %% ../../nbs/01a_data.generate_data.ipynb 66
+# %% ../../nbs/01a_data.generate_data.ipynb 75
 import numpy as np
 import os
 import h5py
@@ -266,7 +266,7 @@ def generate_data_marl_grid_h52(
     print(f"\nData generation complete: {rollouts} rollouts saved.")
 
 
-# %% ../../nbs/01a_data.generate_data.ipynb 67
+# %% ../../nbs/01a_data.generate_data.ipynb 76
 import os
 import numpy as np
 import h5py
@@ -362,7 +362,7 @@ def collect_one_rollout_h5(args):
     return rollout_idx
 
 
-# %% ../../nbs/01a_data.generate_data.ipynb 68
+# %% ../../nbs/01a_data.generate_data.ipynb 77
 import os
 import numpy as np
 from datasets import Dataset
@@ -370,11 +370,11 @@ from ..envs.marl_grid import make_env
 from ..envs.marl_grid.cfg import config
 from datasets import Features, Value, Array3D, Image, List
 import copy
-def collect_one_rollout_ds(args=None):
+def collect_one_rollout_ds(args):
     rollout_idx, seed, seed_steps, data_dir = args
 
     cfg = copy.deepcopy(config)
-    cfg.env_cfg.seed = seed#np.random.randint(0, 5)
+    cfg.env_cfg.seed = int(seed)
     cfg.env_cfg.max_steps = seed_steps
 
     env = make_env(cfg.env_cfg)
@@ -467,22 +467,23 @@ def collect_one_rollout_ds(args=None):
     dataset.save_to_disk(rollout_save_path)
     meta_data_path = os.path.join(rollout_save_path, f"metadata_{rollout_idx}.npz")
 
-    # mata_keys = ['layout', 'goal_pos', 'goal_obs', 'episode_len', 'success', 'success_at', 'seed']
     meta_data = {}
     meta_data['goal_pos'] = goal_pos
     meta_data['episode_len'] = episode_len
     meta_data['success'] = success
     meta_data['success_at'] = success_at
     meta_data['seed'] = config.env_cfg.seed
-    # meta_data['rng_state'] = env.np_random.bit_generator.state['state']['state']
     meta_data['layout'] = layout
     meta_data['goal_obs'] = goal_obs
 
     np.savez(meta_data_path, **meta_data)
     
     return rollout_idx
+    
 
-# %% ../../nbs/01a_data.generate_data.ipynb 69
+
+
+# %% ../../nbs/01a_data.generate_data.ipynb 78
 from multiprocessing import Pool, cpu_count
 
 def generate_parallel(
@@ -511,7 +512,7 @@ def generate_parallel(
             print(f"✓ rollout {idx} done")
 
 
-# %% ../../nbs/01a_data.generate_data.ipynb 71
+# %% ../../nbs/01a_data.generate_data.ipynb 80
 import numpy as np
 from pathlib import Path
 
@@ -526,7 +527,7 @@ def combine_npz_files(meta_files, output_file="meta_data_merged.npz"):
 
     np.savez_compressed(output_file, **master_dict)
 
-# %% ../../nbs/01a_data.generate_data.ipynb 72
+# %% ../../nbs/01a_data.generate_data.ipynb 81
 from datasets import load_from_disk, concatenate_datasets
 import shutil
 def concat_arrows(paths):

@@ -92,34 +92,34 @@ class FindGoalMultiGrid(MultiGridEnv):
         }
         return obs
 
-    # def reset(self, seed: int = None, options: dict = None):
-    #     obs_dict = MultiGridEnv.reset(self, seed=seed, options=options)
+    def reset(self, seed: int = None, options: dict = None):
+        obs_dict = MultiGridEnv.reset(self, seed=seed, options=options)
 
-    #     if self.num_adversaries < 0:
-    #         # need to count number of adversaries in the env
-    #         self.adv_indices = set()
-    #         for i, agent in enumerate(self.agents):
-    #             if agent.is_adversary:
-    #                 self.adv_indices.add(i)
-    #         self.num_adversaries = len(self.adv_indices)
+        if self.num_adversaries < 0:
+            # need to count number of adversaries in the env
+            self.adv_indices = set()
+            for i, agent in enumerate(self.agents):
+                if agent.is_adversary:
+                    self.adv_indices.add(i)
+            self.num_adversaries = len(self.adv_indices)
 
-    #         obs_dict['global'] = self.gen_global_obs()
-    #         return obs_dict
+            obs_dict['global'] = self.gen_global_obs()
+            return obs_dict
 
-    #     else:
-    #         # randomize adv indices each episode
-    #         adv_indices = np.random.choice([i for i in range(self.num_agents)],
-    #                                        self.num_adversaries,
-    #                                        replace=False)
-    #         for i, agent in enumerate(self.agents):
-    #             if i in adv_indices:
-    #                 agent.is_adversary = True
-    #             else:
-    #                 agent.is_adversary = False
-    #         self.adv_indices = adv_indices
+        else:
+            # randomize adv indices each episode
+            adv_indices = np.random.choice([i for i in range(self.num_agents)],
+                                           self.num_adversaries,
+                                           replace=False)
+            for i, agent in enumerate(self.agents):
+                if i in adv_indices:
+                    agent.is_adversary = True
+                else:
+                    agent.is_adversary = False
+            self.adv_indices = adv_indices
 
-    #         obs_dict['global'] = self.gen_global_obs()
-    #         return obs_dict
+            obs_dict['global'] = self.gen_global_obs()
+            return obs_dict
 
     # def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
     #     """
@@ -182,73 +182,73 @@ class FindGoalMultiGrid(MultiGridEnv):
     #     obs_dict['global'] = self.gen_global_obs()
     #     return obs_dict
     
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        """
-        Override reset to add goal visibility constraint during agent placement.
+    # def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+    #     """
+    #     Override reset to add goal visibility constraint during agent placement.
         
-        This replicates MultiGridEnv.reset() but adds a rejection function
-        for agent placement.
-        """
-        # Only call gym.Env.reset() for proper seeding (not MultiGridEnv.reset())
-        # gym.Env.reset() just handles seeding and returns empty info
-        gym.Env.reset(self, seed=seed)
+    #     This replicates MultiGridEnv.reset() but adds a rejection function
+    #     for agent placement.
+    #     """
+    #     # Only call gym.Env.reset() for proper seeding (not MultiGridEnv.reset())
+    #     # gym.Env.reset() just handles seeding and returns empty info
+    #     gym.Env.reset(self, seed=seed)
         
-        # Now do MultiGridEnv's reset logic with our modifications
-        for agent in self.agents:
-            agent.agents = []
-            agent.reset(new_episode=True)
+    #     # Now do MultiGridEnv's reset logic with our modifications
+    #     for agent in self.agents:
+    #         agent.agents = []
+    #         agent.reset(new_episode=True)
 
-        # Generate grid and goal
-        self.goal_pos = self._gen_grid(self.width, self.height)
+    #     # Generate grid and goal
+    #     self.goal_pos = self._gen_grid(self.width, self.height)
         
-        # Define rejection function if enabled
-        if self.spawn_without_goal_view:
-            def reject_spawn_fn(pos):
-                """Reject positions too close to goal (where goal might be visible)"""
-                dist = abs(pos[0] - self.goal_pos[0]) + abs(pos[1] - self.goal_pos[1])
-                return dist < self.min_goal_spawn_distance
-        else:
-            reject_spawn_fn = None
+    #     # Define rejection function if enabled
+    #     if self.spawn_without_goal_view:
+    #         def reject_spawn_fn(pos):
+    #             """Reject positions too close to goal (where goal might be visible)"""
+    #             dist = abs(pos[0] - self.goal_pos[0]) + abs(pos[1] - self.goal_pos[1])
+    #             return dist < self.min_goal_spawn_distance
+    #     else:
+    #         reject_spawn_fn = None
         
-        # Place agents with our custom rejection function
-        for agent in self.agents:
-            if agent.spawn_delay == 0:
-                self.place_obj(
-                    agent,
-                    reject_fn=reject_spawn_fn,  # Add rejection function
-                    max_tries=1000,  # Increase max tries
-                    **self.agent_spawn_kwargs
-                )
-                agent.activate()
+    #     # Place agents with our custom rejection function
+    #     for agent in self.agents:
+    #         if agent.spawn_delay == 0:
+    #             self.place_obj(
+    #                 agent,
+    #                 reject_fn=reject_spawn_fn,  # Add rejection function
+    #                 max_tries=1000,  # Increase max tries
+    #                 **self.agent_spawn_kwargs
+    #             )
+    #             agent.activate()
 
-        self.step_count = 0
-        obs = self.gen_obs()
-        obs_dict = {f'agent_{i}': obs[i] for i in range(len(obs))}
+    #     self.step_count = 0
+    #     obs = self.gen_obs()
+    #     obs_dict = {f'agent_{i}': obs[i] for i in range(len(obs))}
         
-        # FindGoalMultiGrid-specific: handle adversaries
-        if self.num_adversaries < 0:
-            # Count number of adversaries in the env
-            self.adv_indices = set()
-            for i, agent in enumerate(self.agents):
-                if agent.is_adversary:
-                    self.adv_indices.add(i)
-            self.num_adversaries = len(self.adv_indices)
-        else:
-            # Randomize adversary indices each episode
-            adv_indices = np.random.choice(
-                [i for i in range(self.num_agents)],
-                self.num_adversaries,
-                replace=False
-            )
-            for i, agent in enumerate(self.agents):
-                if i in adv_indices:
-                    agent.is_adversary = True
-                else:
-                    agent.is_adversary = False
-            self.adv_indices = adv_indices
+    #     # FindGoalMultiGrid-specific: handle adversaries
+    #     if self.num_adversaries < 0:
+    #         # Count number of adversaries in the env
+    #         self.adv_indices = set()
+    #         for i, agent in enumerate(self.agents):
+    #             if agent.is_adversary:
+    #                 self.adv_indices.add(i)
+    #         self.num_adversaries = len(self.adv_indices)
+    #     else:
+    #         # Randomize adversary indices each episode
+    #         adv_indices = np.random.choice(
+    #             [i for i in range(self.num_agents)],
+    #             self.num_adversaries,
+    #             replace=False
+    #         )
+    #         for i, agent in enumerate(self.agents):
+    #             if i in adv_indices:
+    #                 agent.is_adversary = True
+    #             else:
+    #                 agent.is_adversary = False
+    #         self.adv_indices = adv_indices
         
-        obs_dict['global'] = self.gen_global_obs()
-        return obs_dict
+    #     obs_dict['global'] = self.gen_global_obs()
+    #     return obs_dict
     
     
     def _get_reward(self, rwd, agent_no):

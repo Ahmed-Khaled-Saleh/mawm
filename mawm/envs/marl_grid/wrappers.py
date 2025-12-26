@@ -24,6 +24,20 @@ class DictObservationNormalizationWrapper(gym.Wrapper):
         self.get_layout = env.get_layout
         return
 
+    def reset(self):
+        
+        obs_dict = self.env.reset()
+        for k, v in obs_dict.items():
+            if k == 'global':
+                continue
+
+            if isinstance(v, dict):
+                obs_dict[k]['pov'] = (2. * ((v['pov'] / 255.) - 0.5))
+                obs_dict[k]['pov'] = obs_dict[k]['pov'].astype(np.float32)
+            else:
+                obs_dict[k] = (2. * ((v / 255.) - 0.5)).astype(np.float32)
+        return obs_dict
+    
     def step(self, action):
         obs_dict, rew_dict, done_dict, info_dict = self.env.step(action)
         for k, v in obs_dict.items():
@@ -45,6 +59,7 @@ class GridWorldEvaluatorWrapper(gym.Wrapper):
         self.video_scale = 2
         self.agents = env.agents
         self.render = env.render
+        self.reset = env.reset
         self.get_goal = env.get_goal
         self.get_layout = env.get_layout
         self.show_reward = True
