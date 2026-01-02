@@ -17,7 +17,7 @@ import pandas as pd
 # %% ../../nbs/05d_trainer.lejepa.ipynb 19
 from .trainer import Trainer
 from ..models.utils import save_checkpoint
-from ..losses.custom_loss import SIGReg
+from ..losses.sigreg import SIGReg
 class LejepaTrainer(Trainer):
     def __init__(self, cfg, model, train_loader, val_loader=None, 
                  criterion=None, optimizer=None, device=None,

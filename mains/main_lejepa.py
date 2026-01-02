@@ -24,7 +24,7 @@ from mawm.core import get_cls
 from mawm.data.utils import lejepa_train_tf, lejepa_test_tf, BufferAwareConcatDataset
 from mawm.data.loaders import RolloutObservationDataset, LejepaVisionDataset
 
-from mawm.optimizer.utils import ReduceLROnPlateau, EarlyStopper
+from mawm.optimizers.utils import ReduceLROnPlateau, EarlyStopper
 from mawm.trainers.trainer_lejepa import LejepaTrainer
 from mawm.writers.wandb_writer import WandbWriter
 

@@ -1,0 +1,84 @@
+project_name: lejepa_marlgrid
+
+epochs: 300
+loss_fn: CrossEntropyLoss
+writer: WandbWriter
+noreload: False
+lambda_: 0.02
+
+root_dir: /scratch/project_2009050/
+save_dir : models
+res_dir: results
+
+env:
+  agents: ['agent_0', 'agent_1']
+
+data:
+  data_dir: /scratch/project_2009050/datasets/marl_grid/marl_grid_data
+  batch_size: 128
+  seq_len: 5
+  V: 4
+  obs_key: pov
+  name: marlrid
+
+
+model:
+  name: JEPA
+  channels: 3
+  img_size: 42
+  backbone:
+    arch: MeNet6
+    backbone_subclass: d4rl_a
+    backbone_mlp: null
+    backbone_width_factor: 2
+    input_dim: 4
+    channels: 3
+    position_dim: 2
+    position_encoder_arch: 'id'
+  predictor:
+    residual: true
+    action_encoder_arch: 'id'
+    arch: ConvPredictor
+    predictor_subclass: d4rl_b_p
+    rnn_converter_arch: ''
+    rnn_layers: 1
+    rnn_state_dim: 512
+    z_dim: 0
+    z_min_std: 0.1
+
+
+loss:
+  projector: id
+  idm:
+    action_dim: 2
+    coeff: 5.3964
+    arch: 'conv'
+    use_pred: false
+    arch_subclass: a
+  vicreg:
+    adjust_cov: true
+    cov_chunk_size: null
+    cov_coeff: 11.925
+    cov_coeff_t: 0
+    cov_per_feature: false
+    projector: id
+    random_projector: false
+    sim_coeff: 1
+    std_coeff: 35.026
+    std_coeff_t: 2.9199
+    sim_coeff_t: 0.10193
+    std_margin : 1.0
+    std_margin_t : 1.0
+  prediction_propio:
+    global_coeff: 1.4108
+
+
+
+optimizer:
+  name: Adam
+  lr: 0.001
+  weight_decay: 0.0001 
+  scheduler:
+    name: cosine
+    T_max: 500
+    eta_min: 1e-05
