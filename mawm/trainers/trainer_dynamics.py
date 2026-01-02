@@ -26,20 +26,25 @@ class DynamicsTrainer(Trainer):
                  scheduler=None, writer= None):
         
         self.cfg = cfg
+
         self.train_loader = train_loader
         self.val_loader = val_loader
+
         self.model = model['jepa']
         self.msg_encoder = model['msg_enc']
-        self.z_projector = model['z_proj']
-        self.msg_projector = model['msg_proj']
+        self.projector = model['projector']
+
+        self.optimizer = optimizer
         self.earlystopping = earlystopping
         self.scheduler = scheduler
+
         self.writer = writer
+
         self.sigreg = SIGReg().to(self.device)
         self.vicreg = VICReg().to(self.device) # TODO: ensure .cude comment for projector is returned back
         self.lambda_ = self.cfg.loss.lambda_
+
         self.device = device if device else torch.device('cpu')
-        self.optimizer = optimizer
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
         self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid')
@@ -49,7 +54,6 @@ class DynamicsTrainer(Trainer):
     
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 6
-from einops import rearrange
 from ..models.utils import flatten_conv_output
 @patch
 def train_epoch(self: DynamicsTrainer, epoch):
@@ -59,9 +63,11 @@ def train_epoch(self: DynamicsTrainer, epoch):
     actual_len = 0
 
     for batch_idx, data in enumerate(self.train_loader):
+        self.optimizer.zero_grad()
 
         for agent_id in range(self.agents):
             obs, pos, _, act, _, dones = data[agent_id].values()
+            batch_samples = obs.size(0)
             mask = ~dones.bool()     # keep only where done is False
 
             if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
@@ -88,18 +94,15 @@ def train_epoch(self: DynamicsTrainer, epoch):
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
-                    
-            self.optimizer.zero_grad()
 
-            C = self.msg_encoder(msg[:-1]) # [B, T-1, dim=32]
-            Z0, Z = self.model(x= obs, pos= pos, actions= act[:-1], msgs= C, T= self.cfg.data.seq_len - 1)
+            
+            C = self.msg_encoder(msg[:-1]) # [B, T-1, C, H, W] => [T-1, B, dim=32]
+
+            Z0, Z = self.model(x= obs, pos= pos, actions= act[:-1], msgs= C, T= act.size(0)-1)  # Z0, Z: [T-1, B, c, h, w]
             vicreg_loss = self.vicreg(Z0, Z)
             
-            z_sender = self.model.backbone(obs_sender[:-1], position= pos_sender)
-            z_sender = rearrange(z_sender, 't b c h w -> (b t) (c h w)')
-
-            proj_z = self.z_projector(z_sender)
-            proj_c = self.msg_projector(C)
+            z_sender = self.model.backbone(obs_sender[:-1], position= pos_sender[:-1])  # [T-1, B, c, h, w]
+            proj_z, proj_c = self.projector(z_sender, C)
 
             inv_loss = (proj_z - proj_c).square().mean()
 
@@ -109,13 +112,14 @@ def train_epoch(self: DynamicsTrainer, epoch):
             sigreg_loss = (sigreg_img + sigreg_msg ) / 2.0
             lejepa_loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss 
 
-            loss = lejepa_loss + vicreg_loss['total_loss']
-            train_loss += loss.item() * obs.size(0)
-        
-        loss.backward()
-        self.optimizer.step()
-        actual_len += obs.size(0)         
+            loss = (lejepa_loss + vicreg_loss['total_loss']) / len(self.agents)
+            loss.backward()
 
+            train_loss += loss.item() * batch_samples            
+        
+        actual_len += batch_samples
+        self.optimizer.step()
+               
         if batch_idx % 20 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(obs), len(self.train_loader.dataset),
@@ -205,11 +209,14 @@ import wandb
 def fit(self: DynamicsTrainer):
     self.model.to(self.device)
     self.msg_encoder.to(self.device)
+    self.z_projector.to(self.device)
+    self.msg_projector.to(self.device)
     
     cur_best = None
     lst_dfs = []
 
     for epoch in range(1, self.cfg.epochs + 1):
+        lr = self.scheduler.adjust_learning_rate(epoch)
         train_loss = self.train_epoch(epoch)
         val_loss = self.eval_epoch()
 

@@ -504,7 +504,7 @@ def build_backbone(
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from einops import rearrange
 class SemanticEncoder(nn.Module):
     def __init__(self, num_primitives=5, latent_dim=128):
         super().__init__()
@@ -520,4 +520,8 @@ class SemanticEncoder(nn.Module):
         )
         
     def forward(self, x):
-        return self.net(x)
+        B, T, C, H, W = x.shape
+        x = rearrange(x, 'b t c h w -> (b t) c h w')
+        x = self.net(x) # [B*T, latent_dim]
+        x = rearrange(x, '(b t) d -> t b d', b= B)
+        return x

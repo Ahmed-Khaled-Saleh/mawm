@@ -54,8 +54,16 @@ class MarlGridDataset(torch.utils.data.Dataset):
         path = self.rollouts[idx]
         data = np.load(path, allow_pickle=True)
         episode_len = data['episode_len'].item()
+        loaded_rollout = False
+        try:
+            seq = self.sample_idxs(episode_len)
+            loaded_rollout = True
 
-        seq = self.sample_idxs(episode_len)
+        except Exception as e:
+            loaded_rollout = False
+            idx = np.random.randint(0, len(self))
+            return self.__getitem__(idx)
+        
         return {
             f"{ag}": 
                     {
