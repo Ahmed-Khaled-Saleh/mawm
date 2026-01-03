@@ -31,7 +31,7 @@ class DynamicsTrainer(Trainer):
         self.val_loader = val_loader
 
         self.model = model['jepa']
-        self.msg_encoder = model['msg_enc']
+        self.msg_encoder = model['msg_encoder']
         self.projector = model['projector']
 
         self.optimizer = optimizer
@@ -55,29 +55,31 @@ class DynamicsTrainer(Trainer):
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 6
 from ..models.utils import flatten_conv_output
+from einops import rearrange
 @patch
 def train_epoch(self: DynamicsTrainer, epoch):
     self.model.train()
     
-    train_loss = 0
+    epoch_loss = 0
     actual_len = 0
 
     for batch_idx, data in enumerate(self.train_loader):
         self.optimizer.zero_grad()
+        batch_loss = 0
+        
 
         for agent_id in range(self.agents):
             obs, pos, _, act, _, dones = data[agent_id].values()
-            batch_samples = obs.size(0)
-            mask = ~dones.bool()     # keep only where done is False
+            mask = (~dones.bool()).float().to(self.device) # [B, T]
+            mask_t = rearrange(mask[:-1], 'b t -> t b') # [T-1, B]
+            
+            agent_loss = 0
+            actual_len = 0
 
             if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                 continue  # entire batch is terminals
 
-            obs = obs[mask]          # filter observations
-            pos = pos[mask]
-            msg = msg[mask]
-            act = act[mask]
-
+            batch_samples = mask.sum().item() / mask.size(1) # number of non-terminal samples in the batch
             obs = obs.to(self.device)
             pos = pos.to(self.device)
             msg = msg.to(self.device)
@@ -86,51 +88,53 @@ def train_epoch(self: DynamicsTrainer, epoch):
             for other_agent in range(self.agents):
                 if other_agent != agent_id:
                     obs_sender, pos_sender, msg, _, _, dones = data[other_agent].values()
-                    
-                    msg = msg[mask]
-                    obs_sender = obs_sender[mask]
-                    pos_sender = pos_sender[mask]
 
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
-
             
-            C = self.msg_encoder(msg[:-1]) # [B, T-1, C, H, W] => [T-1, B, dim=32]
+            C = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
-            Z0, Z = self.model(x= obs, pos= pos, actions= act[:-1], msgs= C, T= act.size(0)-1)  # Z0, Z: [T-1, B, c, h, w]
-            vicreg_loss = self.vicreg(Z0, Z)
+            Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= C, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+            vicreg_loss = self.vicreg(Z0, Z, mask= mask)
             
-            z_sender = self.model.backbone(obs_sender[:-1], position= pos_sender[:-1])  # [T-1, B, c, h, w]
-            proj_z, proj_c = self.projector(z_sender, C)
+            z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+            
+            proj_z, proj_c = self.projector(z_sender, C)# [B, T, *] => [T-1, B, dim=128]
+            
+            inv_loss = (proj_z - proj_c).square().mean(dim= -1)  # [T-1, B]
+            inv_loss = (inv_loss * mask[:-1]).sum() / mask[:-1].sum().clamp_min(1) 
+            
+            valid_idx = mask_t.bool()
+            sigreg_img = self.sigreg(proj_z[valid_idx])
+            sigreg_msg = self.sigreg(proj_c[valid_idx])
 
-            inv_loss = (proj_z - proj_c).square().mean()
-
-            sigreg_img = self.sigreg(proj_z)
-            sigreg_msg = self.sigreg(proj_c)
-
-            sigreg_loss = (sigreg_img + sigreg_msg ) / 2.0
+            sigreg_loss = 0.5 * (sigreg_img + sigreg_msg )
             lejepa_loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss 
 
-            loss = (lejepa_loss + vicreg_loss['total_loss']) / len(self.agents)
-            loss.backward()
+            agent_loss = lejepa_loss + vicreg_loss['total_loss']
+            batch_loss += agent_loss
+            
+            num_valid = mask[:, :-1].sum().item()
+            epoch_loss += agent_loss.item() * num_valid
+            actual_len += num_valid
 
-            train_loss += loss.item() * batch_samples            
-        
-        actual_len += batch_samples
+        loss = batch_loss / len(self.agents)
+        loss.backward()
         self.optimizer.step()
-               
+       
+
         if batch_idx % 20 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(obs), len(self.train_loader.dataset),
                 100. * batch_idx / len(self.train_loader),
                 loss.item() / len(obs)))
-        
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
             epoch, train_loss / actual_len))
 
-    return train_loss / actual_len
+    train_loss /= actual_len
+    return train_loss 
        
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 7
@@ -139,25 +143,24 @@ from einops import rearrange
 def eval_epoch(self: DynamicsTrainer):
     self.model.eval()
 
-    val_loss = 0
-    actual_len = 0
+    epoch_loss = 0
 
     with torch.no_grad():
-
-        for batch_idx, data in enumerate(self.val_loader):
+        for batch_idx, data in enumerate(self.train_loader):
+            batch_loss = 0
+            
             for agent_id in range(self.agents):
-
-                obs, pos, msg, act, _, dones = data[agent_id].values()
-                mask = ~dones.bool()     # keep only where done is False
-
-                if mask.sum() == 0:
+                obs, pos, _, act, _, dones = data[agent_id].values()
+                mask = (~dones.bool()).float().to(self.device) # [B, T]
+                mask_t = rearrange(mask[:-1], 'b t -> t b') # [T-1, B]
+                
+                agent_loss = 0
+                actual_len = 0
+                
+                if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                     continue  # entire batch is terminals
 
-                obs = obs[mask]          # filter observations
-                pos = pos[mask]
-                msg = msg[mask]
-                act = act[mask]
-
+                batch_samples = mask.sum().item() / mask.size(1) # number of non-terminal samples in the batch
                 obs = obs.to(self.device)
                 pos = pos.to(self.device)
                 msg = msg.to(self.device)
@@ -166,41 +169,41 @@ def eval_epoch(self: DynamicsTrainer):
                 for other_agent in range(self.agents):
                     if other_agent != agent_id:
                         obs_sender, pos_sender, msg, _, _, dones = data[other_agent].values()
-                        
-                        msg = msg[mask]
-                        obs_sender = obs_sender[mask]
-                        pos_sender = pos_sender[mask]
 
                         obs_sender = obs_sender.to(self.device)
                         pos_sender = pos_sender.to(self.device)
                         msg = msg.to(self.device)
-
-                C = self.msg_encoder(msg[:-1]) # [B, T-1, dim=32]
-                Z0, Z = self.model(x= obs, pos= pos, actions= act[:-1], msgs= C, T= self.cfg.data.seq_len - 1)
-                vicreg_loss = self.vicreg(Z0, Z)
                 
-                z_sender = self.model.backbone(obs_sender[:-1], position= pos_sender)
-                z_sender = rearrange(z_sender, 't b c h w -> (b t) (c h w)')
+                C = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
-                proj_z = self.z_projector(z_sender)
-                proj_c = self.msg_projector(C)
+                Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= C, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+                vicreg_loss = self.vicreg(Z0, Z, mask= mask)
+                
+                z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                
+                proj_z, proj_c = self.projector(z_sender, C)# [B, T, *] => [T-1, B, dim=128]
+                
+                inv_loss = (proj_z - proj_c).square().mean(dim= -1)  # [T-1, B]
+                inv_loss = (inv_loss * mask[:-1]).sum() / mask[:-1].sum().clamp_min(1) 
+                
+                valid_idx = mask_t.bool()
+                sigreg_img = self.sigreg(proj_z[valid_idx])
+                sigreg_msg = self.sigreg(proj_c[valid_idx])
 
-                inv_loss = (proj_z - proj_c).square().mean()
-
-                sigreg_img = self.sigreg(proj_z)
-                sigreg_msg = self.sigreg(proj_c)
-
-                sigreg_loss = (sigreg_img + sigreg_msg ) / 2.0
+                sigreg_loss = 0.5 * (sigreg_img + sigreg_msg )
                 lejepa_loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss 
 
-                loss = lejepa_loss + vicreg_loss['total_loss']
-                train_loss += loss.item() * obs.size(0)
-                val_loss += loss.item() * obs.size(0)
-                actual_len += obs.size(0)
+                agent_loss = lejepa_loss + vicreg_loss['total_loss']
+                batch_loss += agent_loss
+                
+                num_valid = mask[:, :-1].sum().item()
+                epoch_loss += agent_loss.item() * num_valid
+                actual_len += num_valid 
+                
 
-    val_loss /= actual_len
-    print('====> Test set loss: {:.4f}'.format(val_loss))
-    return val_loss
+    epoch_loss /= actual_len
+    print('====> Test set loss: {:.4f}'.format(epoch_loss))
+    return epoch_loss
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 8
 import wandb
@@ -209,8 +212,7 @@ import wandb
 def fit(self: DynamicsTrainer):
     self.model.to(self.device)
     self.msg_encoder.to(self.device)
-    self.z_projector.to(self.device)
-    self.msg_projector.to(self.device)
+    self.projector.to(self.device)
     
     cur_best = None
     lst_dfs = []
@@ -230,7 +232,10 @@ def fit(self: DynamicsTrainer):
 
         state = {
             'epoch': epoch,
-            'state_dict': self.model.state_dict(),
+            'jepa': self.model.state_dict(),
+            'msg_encoder': self.msg_encoder.state_dict(),
+            'projector': self.projector.state_dict(),
+            'train_loss': train_loss,
             'val_loss': val_loss,
             'optimizer': self.optimizer.state_dict(),
         }

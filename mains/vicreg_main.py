@@ -1,56 +1,34 @@
+
+import argparse
+from os.path import join
+import os
+import time
+from functools import reduce
+
+from omegaconf import OmegaConf
+from dotenv import load_dotenv
+from tqdm.auto import tqdm
 from fastcore import *
 from fastcore.utils import *
 
 
-import argparse
-from os.path import join, exists
-from os import mkdir
-import time
-import os
-from torch import optim
-from torch.nn import functional as F
-from torchvision import transforms
-from torch.utils.data import ConcatDataset
-from omegaconf import OmegaConf
-from dotenv import load_dotenv
-
-
-
-from mawm.core import get_cls, PRIMITIVE_TEMPLATES
-
-from mawm.data.utils import lejepa_train_tf, lejepa_test_tf
-from mawm.data.loaders import MarlGridDataset
-
-from mawm.trainers.trainer_progjepa import ProgLejepaTrainer
-from mawm.writers.wandb_writer import WandbWriter
-
-
-import warnings
-
-warnings.filterwarnings("ignore", message="Ill-formed record")
-
-from typing import Optional
-import os
-import shutil
-from dataclasses import dataclass
-import dataclasses
-import random
-import time
-
 import torch
 import numpy as np
-from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
-import matplotlib
-from mawm.logger import Logger, MetricTracker
 
-from mawm.optimizers.schedulers import Scheduler, LRSchedule
+from mawm.logger import Logger, MetricTracker
+from mawm.core import get_cls
+from mawm.writers.wandb_writer import WandbWriter
+from mawm.data.utils import init_data
+from mawm.models.jepa import JEPA
+from mawm.models.utils import Projector
+from mawm.models.vision import SemanticEncoder
+from mawm.optimizers.schedulers import Scheduler
 from mawm.optimizers.factory import OptimizerFactory, OptimizerType
 from mawm.trainers.trainer_dynamics import DynamicsTrainer
 
-from mawm.models.jepa import JEPA
 
-parser = argparse.ArgumentParser(description='VAE Training')
+parser = argparse.ArgumentParser(description='Dynamics Training')
 parser.add_argument('--config', type=str, help='Path to the YAML config file', required=True)
 parser.add_argument('--timestamp', type=str, help='Time stamp', required=True)
 parser.add_argument('--env_file', type=str, help='Path to the .env file', required=False)
@@ -77,58 +55,43 @@ except:
 cfg.now = args.timestamp 
 
 
-def init_data(data_dir, batch_size, train=True):
-    train_ds = MarlGridDataset(root=data_dir,
-                               transform=lejepa_train_tf,
-                               seq_len=cfg.data.seq_len,
-                               train=train
-                               )
-        
-    test_ds = MarlGridDataset(data_path= data_dir, 
-                              transform= lejepa_test_tf,
-                              seq_len= cfg.data.seq_len,
-                              train= not train
-                              )
-        
-    train_loader = torch.utils.data.DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        num_workers=0,
-        pin_memory=True,
-        drop_last=True,
-    )
-
-    val_loader = torch.utils.data.DataLoader(
-        test_ds,
-        batch_size=batch_size,
-        num_workers=0,
-        pin_memory=True,
-        drop_last=False,
-    )
-
-    return train_loader, val_loader 
-
-def init_opt(model):
+def init_opt(params):
         optimizer_cls = get_cls("torch.optim", cfg.optimizer.name)
-        optimizer = optimizer_cls(model.parameters(), lr=cfg.optimizer.lr)
+        optimizer = optimizer_cls(params, lr=cfg.optimizer.lr)
         return optimizer
 
 def main(cfg):
-    cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if cuda else "cpu")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader = init_data(cfg.data.data_dir, cfg.data.batch_size, train= True)    
 
-    model = JEPA(cfg.model, action_dim= 1)
-    model = model.to(device)
-    optimizer = init_opt(model)
+    jepa = JEPA(cfg.model, action_dim= 1)
+    msg_encoder = SemanticEncoder(latent_dim = cfg.model.msg_encoder.latent_dim)
 
+    z_input_dim = reduce(lambda x, y: x * y, jepa.backbone.repr_dim)
+    c_input_dim = msg_encoder.latent_dim * cfg.data.seq_len
+    projector = Projector(z_input_dim= z_input_dim, c_input_dim=c_input_dim)
+    
+    model = torch.nn.ModuleDict({
+         'jepa': jepa,
+         'msg_encoder': msg_encoder,
+         'projector': projector
+    }).to(device)
+
+    all_params = (
+        list(jepa.parameters()) + 
+        list(msg_encoder.parameters()) + 
+        list(projector.parameters())
+    )
+
+    optimizer = init_opt(all_params)
     # TODO: Check this
     scheduler = Scheduler(optimizer, 'min', factor=0.5, patience=5) 
     
     # now = time.strftime("%Y%m%d-%H%M%S")
     # cfg.now = now
     writer = WandbWriter(cfg)
-    trainer = DynamicsTrainer(cfg, model, train_loader, val_loader, criterion= None, optimizer= optimizer,
+    trainer = DynamicsTrainer(cfg, model, train_loader, val_loader, optimizer= optimizer,
                             device= device, earlystopping= None, scheduler= scheduler, writer= writer)
 
     df_res = trainer.fit()

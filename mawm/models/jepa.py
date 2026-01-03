@@ -67,11 +67,11 @@ class JEPA(nn.Module):
 @patch
 def forward(
         self: JEPA,
-        x: torch.Tensor,
-        pos: torch.Tensor = None,
+        x: torch.Tensor, # [B, T, C, H, W]
+        pos: torch.Tensor = None,  # [B, T, 2]
         repr_input: bool = False,
-        actions: torch.Tensor = None,
-        msgs: torch.Tensor = None,
+        actions: torch.Tensor = None,# [B, T, 1]
+        msgs: torch.Tensor = None,# [B, T, 32]
         T: int = None,
         goal: torch.Tensor = None
     ):
@@ -79,11 +79,11 @@ def forward(
     
     z0 = self.backbone(x, position=pos) if not repr_input else x
 
-    z0 = torch.einsum('b t c h w->t b c h w', z0)
-    actions = torch.einsum('b t d->t b d', actions)
-    msgs = torch.einsum('b t m->t b m', msgs)
+    z0 = torch.einsum('b t c h w->t b c h w', z0)# [T, B, C, H, W]
+    actions = torch.einsum('b t d->t b d', actions) # [T, B, D]
+    msgs = torch.einsum('b t m->t b m', msgs) # [T, B, M]
     
-    Z = self.dynamics.forward_multiple(z0, actions[:-1], msgs[:-1], T)
+    Z = self.dynamics.forward_multiple(z0, actions[:-1], msgs[:-1], T) # TODO: check if it should be msgs[1:]
 
     return z0, Z
 

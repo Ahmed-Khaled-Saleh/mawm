@@ -79,7 +79,7 @@ class MarlGridDataset(torch.utils.data.Dataset):
         
     
 
-# %% ../../nbs/01c_data.loaders.ipynb 19
+# %% ../../nbs/01c_data.loaders.ipynb 26
 from bisect import bisect
 from os import listdir
 from os.path import join, isdir
@@ -89,7 +89,7 @@ import torch.utils.data
 import numpy as np
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 20
+# %% ../../nbs/01c_data.loaders.ipynb 27
 class _RolloutDataset(torch.utils.data.Dataset): 
     def __init__(self, agent, root, transform, buffer_size=200, seq_len= 50, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
         
@@ -179,7 +179,7 @@ class _RolloutDataset(torch.utils.data.Dataset):
     def _data_per_sequence(self, data_length):
         raise NotImplementedError
 
-# %% ../../nbs/01c_data.loaders.ipynb 22
+# %% ../../nbs/01c_data.loaders.ipynb 29
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
 
     def _data_per_sequence(self, data_length):
@@ -192,7 +192,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), act, done, self.agent
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 47
+# %% ../../nbs/01c_data.loaders.ipynb 54
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -279,7 +279,7 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         return data_length - self._seq_len
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 57
+# %% ../../nbs/01c_data.loaders.ipynb 64
 import torch
 class LejepaVisionDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform, V=1):
@@ -295,7 +295,7 @@ class LejepaVisionDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.ds)
 
-# %% ../../nbs/01c_data.loaders.ipynb 61
+# %% ../../nbs/01c_data.loaders.ipynb 68
 from datasets import load_from_disk, concatenate_datasets
 import torch
 class D4RL(torch.utils.data.Dataset): 

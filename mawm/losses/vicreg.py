@@ -22,7 +22,7 @@ from ..models.utils import flatten_conv_output
 from functools import reduce
 import operator
 from ..models.misc import Projector
-
+from einops import rearrange
 
 
 # %% ../../nbs/03b_losses.vicreg.ipynb 6
@@ -48,21 +48,25 @@ class VICReg(torch.nn.Module):
 
     
 
-# %% ../../nbs/03b_losses.vicreg.ipynb 7
+# %% ../../nbs/03b_losses.vicreg.ipynb 9
 @patch
-def __call__(self: VICReg, encodings, state_predictions):
+def __call__(self: VICReg, encodings, state_predictions, mask= None):
     
-    sim_loss = (encodings[1:] - state_predictions[1:]).pow(2).mean()
+    valid_mask = rearrange(mask, 'b t -> t b')
+    transition_mask = valid_mask[1:] * valid_mask[:-1]# (T-1, B)
+    
+    diff = (encodings[1:] - state_predictions[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
+    sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp_min(1)
 
     if self.cfg.loss.vicreg.sim_coeff_t:
-        sim_loss_t = (encodings[1:] - encodings[:-1]).pow(2).mean()
+        diff_t = (encodings[1:] - encodings[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
+        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp_min(1)
     else:
         sim_loss_t = torch.zeros([1])
 
     encodings = self.projector(encodings)
 
-    flat_encodings = flatten_conv_output(encodings)
-
+    flat_encodings = flatten_conv_output(encodings) # [T, B, D]
     std_loss = self.std_loss(flat_encodings[:1])
 
     if self.cfg.loss.vicreg.cov_per_feature:
@@ -76,12 +80,29 @@ def __call__(self: VICReg, encodings, state_predictions):
         # reshape (1, bs, ch, h, w) --> (w, bs, ch * h * w)
         cov_loss = self.cov_loss(flat_encodings[:1])
 
-    std_loss_t = self.std_loss(
-        flat_encodings[1:].permute(1, 0, 2), across_time=True
-    )  # (bs, T, repr)
-    cov_loss_t = self.cov_loss(
-        flat_encodings[1:].permute(1, 0, 2), across_time=True
-    )  # (bs, T, repr)
+    # flat_encodings: (T, B, D)
+    flat_enc = flat_encodings[1:]          # drop t=0
+    valid = valid_mask[1:]                 # (T-1, B)
+
+    # reshape to (B, T-1, D)
+    flat_enc = flat_enc.permute(1, 0, 2)
+    valid = valid.permute(1, 0)
+
+
+    std_losses, cov_losses = [], []
+
+    for b in range(flat_enc.shape[0]):
+        idx = valid[b].bool()
+        if idx.sum() > 1:   # must have at least 2 steps
+            x = flat_enc[b, idx]   # (T_valid, D)
+            std_losses.append(self.std_loss(x.unsqueeze(0), across_time=True))
+            cov_losses.append(self.cov_loss(x.unsqueeze(0), across_time=True))
+
+    if len(std_losses) > 0:
+        std_loss_t = torch.stack(std_losses).mean()
+        cov_loss_t = torch.stack(cov_losses).mean()
+    else:
+        std_loss_t = cov_loss_t = torch.zeros(1, device=flat_enc.device)
 
     total_loss = (
         self.cfg.loss.vicreg.sim_coeff * sim_loss
@@ -105,7 +126,7 @@ def __call__(self: VICReg, encodings, state_predictions):
     
     return losses
 
-# %% ../../nbs/03b_losses.vicreg.ipynb 8
+# %% ../../nbs/03b_losses.vicreg.ipynb 10
 @patch
 def std_loss(self:VICReg, x: torch.Tensor, across_time=False):
     x = x - x.mean(dim=1, keepdim=True)  # mean for each dim across batch samples
@@ -127,7 +148,7 @@ def std_loss(self:VICReg, x: torch.Tensor, across_time=False):
 
     return std_loss
 
-# %% ../../nbs/03b_losses.vicreg.ipynb 9
+# %% ../../nbs/03b_losses.vicreg.ipynb 11
 @patch
 def cov_loss(self: VICReg, x: torch.Tensor, across_time=False):
     batch_size = x.shape[1]

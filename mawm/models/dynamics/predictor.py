@@ -674,7 +674,6 @@ def forward_multiple(
         T: timesteps to propagate forward
     Output:
         state_predictions: (T, BS, hidden_dim)
-        rnn_states: (T, BS, hidden_dim)
     """
     bs = z0.shape[1]
     current_state = z0[0]
@@ -689,10 +688,6 @@ def forward_multiple(
         next_state = self.forward(
             current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
         )
-        
-        # next_state = self.forward(
-        #     current_state, torch.cat(predictor_input, dim=-1)
-        # )
         current_state = next_state
 
         state_predictions.append(next_state)

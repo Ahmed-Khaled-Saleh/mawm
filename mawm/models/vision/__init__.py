@@ -506,7 +506,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 class SemanticEncoder(nn.Module):
-    def __init__(self, num_primitives=5, latent_dim=128):
+    def __init__(self, num_primitives=5, latent_dim=32):
+        self.latent_dim = latent_dim
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(num_primitives, 16, kernel_size=3, padding=1),
@@ -523,5 +524,6 @@ class SemanticEncoder(nn.Module):
         B, T, C, H, W = x.shape
         x = rearrange(x, 'b t c h w -> (b t) c h w')
         x = self.net(x) # [B*T, latent_dim]
-        x = rearrange(x, '(b t) d -> t b d', b= B)
+        x = rearrange(x, '(b t) d -> b t d', b= B)
         return x
+

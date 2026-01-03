@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['PROBER_CONV_LAYERS_CONFIG', 'build_projector', 'build_norm1d', 'build_activation', 'PartialAffineLayerNorm',
-           'build_mlp', 'MLP', 'Prober', 'Projector']
+           'build_mlp', 'MLP', 'Prober', 'Projector', 'JepaProjector']
 
 # %% ../../nbs/02j_models.misc.ipynb 3
 from fastcore import *
@@ -231,3 +231,38 @@ class Projector(torch.nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.model(x)
+
+# %% ../../nbs/02j_models.misc.ipynb 5
+import torch
+from torch import nn
+from einops import rearrange
+class JepaProjector(nn.Module):
+    def __init__(self, z_input_dim=4050, c_input_dim=32):
+        super().__init__()
+        
+        self.z_projector = nn.Sequential(
+                nn.Linear(z_input_dim, 2048),
+                nn.BatchNorm1d(2048),
+                nn.ReLU(),
+                nn.Linear(2048, 128) # 128 is the 'Shared Latent Space'
+            )
+
+        self.msg_projector = nn.Sequential(
+            nn.Linear(c_input_dim, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            nn.Linear(2048, 128) # 128 is the 'Shared Latent Space'
+            )
+        
+    def forward(self, z_sender, C):
+        B, T, D = C.shape
+        z_sender = rearrange(z_sender, 'b t c h w -> (t b) (c h w)')
+        proj_z = self.z_projector(z_sender) # [(T*B, dim=128]
+        proj_z = rearrange(proj_z, '(t b) d -> t b d', b= B)
+
+        C = rearrange(rearrange(C, 'b t d -> t b d'), 't b d -> (t b) d')
+        proj_c = self.msg_projector(C) # [(T*B, dim=128]
+        proj_c = rearrange(proj_c, '(t b) d -> t b d', b= B)
+        
+        return  proj_z[:-1], proj_c[:-1]
+
