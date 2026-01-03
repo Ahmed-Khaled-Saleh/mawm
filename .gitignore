@@ -21,7 +21,8 @@ __pycache__/
 
 # C extensions
 *.so
-
+*.pth
+*.csv
 # Distribution / packaging
 .Python
 env/

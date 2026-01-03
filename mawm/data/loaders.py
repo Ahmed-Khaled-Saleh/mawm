@@ -69,17 +69,16 @@ class MarlGridDataset(torch.utils.data.Dataset):
                     {
                     "obs": torch.stack([self.transform(frame) for frame in data[f"{ag}_obs"][seq]]),
                     "pos": torch.from_numpy(data[f"{ag}_selfpos"][seq]),
-                    "msg": torch.stack([self.msg_tf(frame) for frame in data[f"{ag}_obs"][seq]]),
-                    "act": torch.from_numpy(data[f"{ag}_act"][seq]),
+                    "msg": torch.stack([self.msg_tf((frame, ag, done)) for frame, done in zip(data[f"{ag}_obs"][seq], data[f"{ag}_done"][seq])]),
+                    "act": torch.stack([torch.from_numpy(np.asarray(data[f"{ag}_act"][seq]))], dim=1),
                     "next_obs": torch.stack([self.transform(frame) for frame in data[f"{ag}_next_obs"][seq]]),
-                    "done": torch.from_numpy(data[f"{ag}_done"][seq]),
+                    "done": torch.stack([torch.from_numpy(data[f"{ag}_done"][seq])], dim=1),
                     } 
             for ag in (self.agents)}
+            
         
-        
-    
 
-# %% ../../nbs/01c_data.loaders.ipynb 26
+# %% ../../nbs/01c_data.loaders.ipynb 21
 from bisect import bisect
 from os import listdir
 from os.path import join, isdir
@@ -89,7 +88,7 @@ import torch.utils.data
 import numpy as np
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 27
+# %% ../../nbs/01c_data.loaders.ipynb 22
 class _RolloutDataset(torch.utils.data.Dataset): 
     def __init__(self, agent, root, transform, buffer_size=200, seq_len= 50, train=True, obs_key = 'pov'): # pylint: disable=too-many-arguments
         
@@ -179,7 +178,7 @@ class _RolloutDataset(torch.utils.data.Dataset):
     def _data_per_sequence(self, data_length):
         raise NotImplementedError
 
-# %% ../../nbs/01c_data.loaders.ipynb 29
+# %% ../../nbs/01c_data.loaders.ipynb 24
 class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
 
     def _data_per_sequence(self, data_length):
@@ -192,7 +191,7 @@ class RolloutObservationDataset(_RolloutDataset): # pylint: disable=too-few-publ
         return self._transform(obs), act, done, self.agent
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 54
+# %% ../../nbs/01c_data.loaders.ipynb 49
 class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-methods
     """ Encapsulates rollouts.
 
@@ -279,7 +278,7 @@ class RolloutSequenceDataset(_RolloutDataset): # pylint: disable=too-few-public-
         return data_length - self._seq_len
 
 
-# %% ../../nbs/01c_data.loaders.ipynb 64
+# %% ../../nbs/01c_data.loaders.ipynb 59
 import torch
 class LejepaVisionDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform, V=1):
@@ -295,7 +294,7 @@ class LejepaVisionDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.ds)
 
-# %% ../../nbs/01c_data.loaders.ipynb 68
+# %% ../../nbs/01c_data.loaders.ipynb 63
 from datasets import load_from_disk, concatenate_datasets
 import torch
 class D4RL(torch.utils.data.Dataset): 

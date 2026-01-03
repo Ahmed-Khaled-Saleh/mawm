@@ -52,7 +52,7 @@ class VICReg(torch.nn.Module):
 @patch
 def __call__(self: VICReg, encodings, state_predictions, mask= None):
     
-    valid_mask = rearrange(mask, 'b t -> t b')
+    valid_mask = mask#rearrange(mask, 'b t -> t b')
     transition_mask = valid_mask[1:] * valid_mask[:-1]# (T-1, B)
     
     diff = (encodings[1:] - state_predictions[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)

@@ -261,6 +261,7 @@ class JepaProjector(nn.Module):
         proj_z = rearrange(proj_z, '(t b) d -> t b d', b= B)
 
         C = rearrange(rearrange(C, 'b t d -> t b d'), 't b d -> (t b) d')
+        print(C.shape)
         proj_c = self.msg_projector(C) # [(T*B, dim=128]
         proj_c = rearrange(proj_c, '(t b) d -> t b d', b= B)
         

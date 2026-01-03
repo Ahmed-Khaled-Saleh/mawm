@@ -21,7 +21,7 @@ from mawm.core import get_cls
 from mawm.writers.wandb_writer import WandbWriter
 from mawm.data.utils import init_data
 from mawm.models.jepa import JEPA
-from mawm.models.utils import Projector
+from mawm.models.misc import JepaProjector
 from mawm.models.vision import SemanticEncoder
 from mawm.optimizers.schedulers import Scheduler
 from mawm.optimizers.factory import OptimizerFactory, OptimizerType
@@ -63,20 +63,19 @@ def init_opt(params):
 def main(cfg):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, val_loader = init_data(cfg.data.data_dir, cfg.data.batch_size, train= True)    
+    train_loader, val_loader = init_data(cfg)    
 
-    jepa = JEPA(cfg.model, action_dim= 1)
-    msg_encoder = SemanticEncoder(latent_dim = cfg.model.msg_encoder.latent_dim)
+    jepa = JEPA(cfg.model, input_dim=(3, 42, 42), action_dim= 1)
+    msg_encoder = SemanticEncoder(num_primitives= 5, latent_dim = 32)#cfg.model.msg_encoder.latent_dim)
 
     z_input_dim = reduce(lambda x, y: x * y, jepa.backbone.repr_dim)
-    c_input_dim = msg_encoder.latent_dim * cfg.data.seq_len
-    projector = Projector(z_input_dim= z_input_dim, c_input_dim=c_input_dim)
+    projector = JepaProjector(z_input_dim= z_input_dim, c_input_dim=msg_encoder.latent_dim)
     
-    model = torch.nn.ModuleDict({
+    model = {
          'jepa': jepa,
          'msg_encoder': msg_encoder,
          'projector': projector
-    }).to(device)
+    }
 
     all_params = (
         list(jepa.parameters()) + 
@@ -85,9 +84,15 @@ def main(cfg):
     )
 
     optimizer = init_opt(all_params)
-    # TODO: Check this
-    scheduler = Scheduler(optimizer, 'min', factor=0.5, patience=5) 
-    
+    scheduler = Scheduler(
+                        schedule=cfg.optimizer.scheduler.name,
+                        base_lr=cfg.optimizer.lr,
+                        data_loader=train_loader,
+                        epochs=cfg.epochs,
+                        optimizer=optimizer,
+                        batch_size=cfg.data.batch_size,
+                        )
+                    
     # now = time.strftime("%Y%m%d-%H%M%S")
     # cfg.now = now
     writer = WandbWriter(cfg)

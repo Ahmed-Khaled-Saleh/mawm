@@ -26,6 +26,7 @@ class DynamicsTrainer(Trainer):
                  scheduler=None, writer= None):
         
         self.cfg = cfg
+        self.device = device if device else torch.device('cpu')
 
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -41,15 +42,15 @@ class DynamicsTrainer(Trainer):
         self.writer = writer
 
         self.sigreg = SIGReg().to(self.device)
-        self.vicreg = VICReg().to(self.device) # TODO: ensure .cude comment for projector is returned back
+        self.vicreg = VICReg(self.cfg, repr_dim=self.model.backbone.repr_dim).to(self.device) # TODO: ensure .cude comment for projector is returned back
         self.lambda_ = self.cfg.loss.lambda_
 
-        self.device = device if device else torch.device('cpu')
+        
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
         self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid')
         if not os.path.exists(self.dmpc_dir):
-            os.mkdir(self.dmpc_dir)
+            os.makedirs(self.dmpc_dir)
 
     
 
@@ -67,11 +68,11 @@ def train_epoch(self: DynamicsTrainer, epoch):
         self.optimizer.zero_grad()
         batch_loss = 0
         
-
-        for agent_id in range(self.agents):
+        for agent_id in self.agents:
             obs, pos, _, act, _, dones = data[agent_id].values()
-            mask = (~dones.bool()).float().to(self.device) # [B, T]
-            mask_t = rearrange(mask[:-1], 'b t -> t b') # [T-1, B]
+            mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
+            mask = rearrange(mask, 'b t d-> t (b d)')  # [T, B]
+            mask_t = mask[:-1].clone() #rearrange(mask[:-1], 't b -> t b') # [T-1, B]
             
             agent_loss = 0
             actual_len = 0
@@ -79,19 +80,18 @@ def train_epoch(self: DynamicsTrainer, epoch):
             if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                 continue  # entire batch is terminals
 
-            batch_samples = mask.sum().item() / mask.size(1) # number of non-terminal samples in the batch
             obs = obs.to(self.device)
             pos = pos.to(self.device)
-            msg = msg.to(self.device)
             act = act.to(self.device)
 
-            for other_agent in range(self.agents):
+            for other_agent in self.agents:
                 if other_agent != agent_id:
-                    obs_sender, pos_sender, msg, _, _, dones = data[other_agent].values()
+                    obs_sender, pos_sender, msg, _, _,_ = data[other_agent].values()
 
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
+            
             
             C = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
@@ -131,10 +131,10 @@ def train_epoch(self: DynamicsTrainer, epoch):
                 loss.item() / len(obs)))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
-            epoch, train_loss / actual_len))
+            epoch, epoch_loss / actual_len))
 
-    train_loss /= actual_len
-    return train_loss 
+    epoch_loss /= actual_len
+    return epoch_loss 
        
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 7
@@ -149,10 +149,11 @@ def eval_epoch(self: DynamicsTrainer):
         for batch_idx, data in enumerate(self.train_loader):
             batch_loss = 0
             
-            for agent_id in range(self.agents):
+            for agent_id in self.agents:
                 obs, pos, _, act, _, dones = data[agent_id].values()
-                mask = (~dones.bool()).float().to(self.device) # [B, T]
-                mask_t = rearrange(mask[:-1], 'b t -> t b') # [T-1, B]
+                mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
+                mask = rearrange(mask, 'b t d-> t (b d)')  # [T, B]
+                mask_t = mask[:-1].clone() #rearrange(mask[:-1], 't b -> t b') # [T-1, B]
                 
                 agent_loss = 0
                 actual_len = 0
@@ -160,15 +161,13 @@ def eval_epoch(self: DynamicsTrainer):
                 if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                     continue  # entire batch is terminals
 
-                batch_samples = mask.sum().item() / mask.size(1) # number of non-terminal samples in the batch
                 obs = obs.to(self.device)
                 pos = pos.to(self.device)
-                msg = msg.to(self.device)
                 act = act.to(self.device)
 
-                for other_agent in range(self.agents):
+                for other_agent in self.agents:
                     if other_agent != agent_id:
-                        obs_sender, pos_sender, msg, _, _, dones = data[other_agent].values()
+                        obs_sender, pos_sender, msg, _, _,_ = data[other_agent].values()
 
                         obs_sender = obs_sender.to(self.device)
                         pos_sender = pos_sender.to(self.device)
@@ -223,8 +222,8 @@ def fit(self: DynamicsTrainer):
         val_loss = self.eval_epoch()
 
         # checkpointing
-        best_filename = os.path.join(self.lejepa_dir, 'best.pth')
-        filename = os.path.join(self.lejepa_dir, 'checkpoint.pth')
+        best_filename = os.path.join(self.dmpc_dir, 'best.pth')
+        filename = os.path.join(self.dmpc_dir, 'checkpoint.pth')
 
         is_best = not cur_best or val_loss < cur_best
         if is_best:
@@ -238,6 +237,7 @@ def fit(self: DynamicsTrainer):
             'train_loss': train_loss,
             'val_loss': val_loss,
             'optimizer': self.optimizer.state_dict(),
+            "lr": lr,
         }
         save_checkpoint(state= state, is_best= is_best, filename= filename, best_filename= best_filename)
 
