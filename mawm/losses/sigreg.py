@@ -29,7 +29,7 @@ class SIGReg(torch.nn.Module):
         self.register_buffer("weights", weights * window)
 
     def forward(self, proj):
-        A = torch.randn(proj.size(-1), 256, device="cpu")
+        A = torch.randn(proj.size(-1), 256, device="cuda")
         A = A.div_(A.norm(p=2, dim=0))
         x_t = (proj @ A).unsqueeze(-1) * self.t
         err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
