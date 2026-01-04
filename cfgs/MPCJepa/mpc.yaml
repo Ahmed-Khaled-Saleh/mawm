@@ -15,8 +15,8 @@ env:
 
 data:
   data_dir: /scratch/project_2009050/datasets/MarlGridV3/
-  batch_size: 128
-  seq_len: 5
+  batch_size: 32  
+  seq_len: 20
   V: 4
   obs_key: pov
   name: marlrid

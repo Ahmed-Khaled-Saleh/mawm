@@ -29,7 +29,7 @@ class WandbWriter:
 def write(self: WandbWriter, log_dict):
     wandb.log(log_dict)
 
-# %% ../../nbs/08_writers.wandb_writer.ipynb 7
+# %% ../../nbs/08_writers.wandb_writer.ipynb 6
 @patch
 def finish(self: WandbWriter):
     self.run.finish()

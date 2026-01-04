@@ -14,8 +14,7 @@
 module --force purge
 module load pytorch
 source /projappl/project_2009050/mytorch/bin/activate
-cd /projappl/project_2009050/dl/
-pip install -e .
+cd /projappl/project_2009050/mawm/mains/
 
 export PYTHONPATH=$PYTHONPATH:/projappl/project_2009050/mytorch/lib/python3.11/site-packages
 echo "Current PYTHONPATH: $PYTHONPATH"
