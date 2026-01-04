@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=project_2009050
 #SBATCH --job-name=data_collection
-#SBATCH --partition=small
+#SBATCH --partition=medium
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
