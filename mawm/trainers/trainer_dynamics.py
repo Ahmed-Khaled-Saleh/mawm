@@ -61,8 +61,8 @@ from einops import rearrange
 def train_epoch(self: DynamicsTrainer, epoch):
     self.model.train()
     
-    epoch_loss = 0
-    actual_len = 0
+    total_running_loss = 0.0
+    total_valid_steps = 0
 
     for batch_idx, data in enumerate(self.train_loader):
         self.optimizer.zero_grad()
@@ -79,6 +79,7 @@ def train_epoch(self: DynamicsTrainer, epoch):
 
             if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                 continue  # entire batch is terminals
+            num_valid = mask[:, :-1].sum().item()
 
             obs = obs.to(self.device)
             pos = pos.to(self.device)
@@ -114,27 +115,26 @@ def train_epoch(self: DynamicsTrainer, epoch):
 
             agent_loss = lejepa_loss + vicreg_loss['total_loss']
             batch_loss += agent_loss
-            
-            num_valid = mask[:, :-1].sum().item()
-            epoch_loss += agent_loss.item() * num_valid
-            actual_len += num_valid
 
+            num_valid = mask.sum().item()
+            total_running_loss += agent_loss.item() * num_valid
+            total_valid_steps += num_valid
+
+            
         loss = batch_loss / len(self.agents)
         loss.backward()
         self.optimizer.step()
        
 
         if batch_idx % 20 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(obs), len(self.train_loader.dataset),
-                100. * batch_idx / len(self.train_loader),
-                loss.item() / len(obs)))
+            print(f'Train Epoch: {epoch} [{batch_idx * len(obs)}/{len(self.train_loader.dataset)} '
+                  f'({100. * batch_idx / len(self.train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
-    print('====> Epoch: {} Average loss: {:.4f}'.format(
-            epoch, epoch_loss / actual_len))
+    # divide by len(self.agents) to match the 'loss' scale used in training
+    final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents)
+    print(f'====> Epoch: {epoch} Average loss: {final_epoch_loss:.4f}')
 
-    epoch_loss /= actual_len
-    return epoch_loss 
+    return final_epoch_loss
        
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 7
@@ -143,7 +143,8 @@ from einops import rearrange
 def eval_epoch(self: DynamicsTrainer):
     self.model.eval()
 
-    epoch_loss = 0
+    total_running_loss = 0.0
+    total_valid_steps = 0
 
     with torch.no_grad():
         for batch_idx, data in enumerate(self.train_loader):
@@ -194,15 +195,15 @@ def eval_epoch(self: DynamicsTrainer):
 
                 agent_loss = lejepa_loss + vicreg_loss['total_loss']
                 batch_loss += agent_loss
-                
-                num_valid = mask[:, :-1].sum().item()
-                epoch_loss += agent_loss.item() * num_valid
-                actual_len += num_valid 
-                
 
-    epoch_loss /= actual_len
-    print('====> Test set loss: {:.4f}'.format(epoch_loss))
-    return epoch_loss
+                num_valid = mask.sum().item()
+                total_running_loss += agent_loss.item() * num_valid
+                total_valid_steps += num_valid
+
+    final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents)
+    print(f'====>  Test set loss: {final_epoch_loss:.4f}')
+    return final_epoch_loss
+       
 
 # %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 8
 import wandb

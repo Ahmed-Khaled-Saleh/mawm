@@ -57,19 +57,20 @@ loss:
     use_pred: false
     arch_subclass: a
   vicreg:
-    adjust_cov: true
-    cov_chunk_size: null
-    cov_coeff: 11.925
-    cov_coeff_t: 0
-    cov_per_feature: false
     projector: id
     random_projector: false
-    sim_coeff: 1
-    std_coeff: 35.026
-    std_coeff_t: 2.9199
-    sim_coeff_t: 0.10193
-    std_margin : 1.0
-    std_margin_t : 1.0
+    sim_coeff: 1.0
+    std_coeff: 3
+    cov_coeff: 6.9238
+    std_coeff_t: 0.24535
+    cov_coeff_t: 0.0
+    sim_coeff_t: 0.74242
+    cov_per_feature: false
+    adjust_cov: true
+    cov_chunk_size: null
+    std_margin: 1.0
+    std_margin_t: 1.0
+
   prediction_propio:
     global_coeff: 1.4108
 
