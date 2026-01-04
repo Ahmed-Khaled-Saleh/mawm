@@ -16,8 +16,9 @@ export NUMEXPR_NUM_THREADS=1
 module --force purge
 module load pytorch
 source /projappl/project_2009050/mytorch/bin/activate
-cd /projappl/project_2009050/mawm/mains/
+cd /projappl/project_2009050/mawm/
 pip install -e .
+cd ./mains
 
 export PYTHONPATH=$PYTHONPATH:/scratch/project_2009050/torchy/lib/python3.12/site-packages
 echo "Current PYTHONPATH: $PYTHONPATH"
