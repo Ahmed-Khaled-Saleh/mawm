@@ -3,9 +3,7 @@
 #SBATCH --job-name=data_collection
 #SBATCH --partition=medium
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
-#SBATCH --mem-per-cpu=8G
+#SBATCH --ntasks-per-node=128
 #SBATCH --time=8:00:00
 #SBATCH --output=./logs/out_%j_%x_%N.log  # includes time stamp (t), job ID(j), job name (x), and node name (N)
 #SBATCH --error=./logs/err_%j_%x_%N.err

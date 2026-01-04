@@ -1,4 +1,4 @@
-project_name: lejepa_marlgrid
+project_name: DynamicsTRainer
 
 epochs: 300
 loss_fn: CrossEntropyLoss
