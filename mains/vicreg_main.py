@@ -21,7 +21,7 @@ from mawm.core import get_cls
 from mawm.writers.wandb_writer import WandbWriter
 from mawm.data.utils import init_data
 from mawm.models.jepa import JEPA
-from mawm.models.misc import JepaProjector
+from mawm.models.misc import JepaProjector, MsgPred, ObsPred
 from mawm.models.vision import SemanticEncoder
 from mawm.optimizers.schedulers import Scheduler
 from mawm.optimizers.factory import OptimizerFactory, OptimizerType
@@ -69,18 +69,23 @@ def main(cfg):
     msg_encoder = SemanticEncoder(num_primitives= 5, latent_dim = 32)#cfg.model.msg_encoder.latent_dim)
 
     z_input_dim = reduce(lambda x, y: x * y, jepa.backbone.repr_dim)
-    projector = JepaProjector(z_input_dim= z_input_dim, c_input_dim=msg_encoder.latent_dim)
+    # projector = JepaProjector(z_input_dim= z_input_dim, c_input_dim=msg_encoder.latent_dim)
+    msg_pred = MsgPred(h_dim=32)
+    obs_pred = ObsPred(h_dim=32)
     
     model = {
          'jepa': jepa,
          'msg_encoder': msg_encoder,
-         'projector': projector
+        #  'projector': projector,
+         'msg_predictor': msg_pred,
+         'obs_predictor': obs_pred,
     }
 
     all_params = (
         list(jepa.parameters()) + 
         list(msg_encoder.parameters()) + 
-        list(projector.parameters())
+        list(msg_pred.parameters()) +
+        list(obs_pred.parameters())
     )
 
     optimizer = init_opt(all_params)

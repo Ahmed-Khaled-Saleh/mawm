@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['PROBER_CONV_LAYERS_CONFIG', 'build_projector', 'build_norm1d', 'build_activation', 'PartialAffineLayerNorm',
-           'build_mlp', 'MLP', 'Prober', 'Projector', 'JepaProjector']
+           'build_mlp', 'MLP', 'Prober', 'Projector', 'JepaProjector', 'MsgPred', 'ObsPred']
 
 # %% ../../nbs/02j_models.misc.ipynb 3
 from fastcore import *
@@ -267,3 +267,61 @@ class JepaProjector(nn.Module):
         
         return  proj_z[:-1], proj_c[:-1]
 
+
+# %% ../../nbs/02j_models.misc.ipynb 13
+import torch
+import torch.nn as nn
+class MsgPred(nn.Module):
+    def __init__(self, h_dim=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            # Input: (B, 16, 15, 15)
+            nn.Conv2d(16, 32, kernel_size=3, stride=2), # -> (B, 32, 7, 7)
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2), # -> (B, 32, 3, 3)
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 3 * 3, 64),
+            nn.ReLU(),
+            nn.Linear(64, h_dim) # Output: 32
+        )
+
+    def forward(self, z):
+        # z shape: (B, T, 16, 15, 15)
+        if z.dim() == 5:
+            B, T, C, H, W = z.shape
+            z = rearrange(z, 'b t c h w -> (b t) c h w')
+            out = self.net(z)
+            out = rearrange(out, '(b t) d -> b t d', b= B)
+            return out
+        return self.net(z)
+
+# %% ../../nbs/02j_models.misc.ipynb 15
+import torch
+import torch.nn as nn
+class ObsPred(nn.Module):
+    def __init__(self, h_dim=32):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(h_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 16 * 7 * 7),
+            nn.ReLU()
+        )
+        self.upsample = nn.Sequential(
+            # Input: (B, 16, 7, 7)
+            nn.ConvTranspose2d(16, 32, kernel_size=3, stride=2), # -> (B, 32, 15, 15)
+            nn.ReLU(),
+            nn.Conv2d(32, 16, kernel_size=1) # -> (B, 16, 15, 15)
+        )
+
+    def forward(self, h):
+        # h shape: (B, T, 32)
+        B, T, d = h.shape
+        h = rearrange(h, 'b t d -> (b t) d')
+        z = self.fc(h)
+        z = z.view(-1, 16, 7, 7)
+        z = self.upsample(z)
+        z = rearrange(z, '(b t) c h w -> b t c h w', b= B)
+        return z
+    

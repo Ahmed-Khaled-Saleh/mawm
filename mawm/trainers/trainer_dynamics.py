@@ -33,7 +33,9 @@ class DynamicsTrainer(Trainer):
 
         self.model = model['jepa']
         self.msg_encoder = model['msg_encoder']
-        self.projector = model['projector']
+        # self.projector = model['projector']
+        self.msg_predictor = model['msg_predictor']
+        self.obs_predictor = model['obs_predictor']
 
         self.optimizer = optimizer
         self.earlystopping = earlystopping
@@ -54,7 +56,7 @@ class DynamicsTrainer(Trainer):
 
     
 
-# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 6
+# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 7
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
@@ -67,19 +69,18 @@ def train_epoch(self: DynamicsTrainer, epoch):
     for batch_idx, data in enumerate(self.train_loader):
         self.optimizer.zero_grad()
         batch_loss = 0
-        
+
         for agent_id in self.agents:
             obs, pos, _, act, _, dones = data[agent_id].values()
             mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
-            mask = rearrange(mask, 'b t d-> t (b d)')  # [T, B]
-            mask_t = mask[:-1].clone() #rearrange(mask[:-1], 't b -> t b') # [T-1, B]
+            mask = rearrange(mask, 'b t d-> b (t d)')  # [T, B]
+            mask_t = rearrange(mask, 'b t -> t b')  # [T, B]
+            # mask_t = mask[:-1].clone() #rearrange(mask[:-1], 't b -> t b') # [T-1, B]
             
             agent_loss = 0
-            actual_len = 0
 
             if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                 continue  # entire batch is terminals
-            num_valid = mask[:, :-1].sum().item()
 
             obs = obs.to(self.device)
             pos = pos.to(self.device)
@@ -93,27 +94,36 @@ def train_epoch(self: DynamicsTrainer, epoch):
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
             
-            
-            C = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
+            h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
-            Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= C, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
-            vicreg_loss = self.vicreg(Z0, Z, mask= mask)
+            Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+            vicreg_loss = self.vicreg(Z0, Z, mask= mask_t)
+            print(vicreg_loss)
             
             z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-            
-            proj_z, proj_c = self.projector(z_sender, C)# [B, T, *] => [T-1, B, dim=128]
-            
-            inv_loss = (proj_z - proj_c).square().mean(dim= -1)  # [T-1, B]
-            inv_loss = (inv_loss * mask[:-1]).sum() / mask[:-1].sum().clamp_min(1) 
-            
-            valid_idx = mask_t.bool()
-            sigreg_img = self.sigreg(proj_z[valid_idx])
-            sigreg_msg = self.sigreg(proj_c[valid_idx])
+            z_sender_hat = self.obs_predictor(h)
 
-            sigreg_loss = 0.5 * (sigreg_img + sigreg_msg )
-            lejepa_loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss 
+            z_sender_flat = flatten_conv_output(z_sender[:, :, :-2])  # [B, T, c`, h`, w`] => [B, T,d]
+            z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
 
-            agent_loss = lejepa_loss + vicreg_loss['total_loss']
+            z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
+            z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+
+            h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
+            h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
+            h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+            z_alignment = z_pred_loss * 250.0 
+            h_alignment = h_pred_loss * 2000.0
+
+            # 3. Combine
+            agent_loss = (
+                vicreg_loss['total_loss'] + 
+                self.lambda_ * z_alignment + 
+                (1 - self.lambda_) * h_alignment
+            )
+                        
+            # agent_loss = self.lambda_ * z_pred_loss + (1 - self.lambda_) * h_pred_loss + vicreg_loss['total_loss']
+            print(f"Agent: {agent_id}, z_pred_loss: {z_alignment.item():.4f}, h_pred_loss: {h_alignment.item():.4f}, vicreg_loss: {vicreg_loss['total_loss'].item():.4f}, agent_loss: {agent_loss.item():.4f}")
             batch_loss += agent_loss
 
             num_valid = mask.sum().item()
@@ -137,7 +147,7 @@ def train_epoch(self: DynamicsTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 7
+# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 9
 from einops import rearrange
 @patch
 def eval_epoch(self: DynamicsTrainer):
@@ -153,11 +163,10 @@ def eval_epoch(self: DynamicsTrainer):
             for agent_id in self.agents:
                 obs, pos, _, act, _, dones = data[agent_id].values()
                 mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
-                mask = rearrange(mask, 'b t d-> t (b d)')  # [T, B]
-                mask_t = mask[:-1].clone() #rearrange(mask[:-1], 't b -> t b') # [T-1, B]
-                
+                mask = rearrange(mask, 'b t d-> b (t d)')  # [T, B]
+                mask_t = rearrange(mask, 'b t -> t b')  # [T, B]
+                    
                 agent_loss = 0
-                actual_len = 0
                 
                 if mask.sum() == 0: # CHECK: mask is determined per the reciever agent
                     continue  # entire batch is terminals
@@ -174,26 +183,28 @@ def eval_epoch(self: DynamicsTrainer):
                         pos_sender = pos_sender.to(self.device)
                         msg = msg.to(self.device)
                 
-                C = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
+                h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
-                Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= C, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
-                vicreg_loss = self.vicreg(Z0, Z, mask= mask)
+                Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+                vicreg_loss = self.vicreg(Z0, Z, mask= mask_t)
                 
                 z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                z_sender_hat = self.obs_predictor(h)
                 
-                proj_z, proj_c = self.projector(z_sender, C)# [B, T, *] => [T-1, B, dim=128]
-                
-                inv_loss = (proj_z - proj_c).square().mean(dim= -1)  # [T-1, B]
-                inv_loss = (inv_loss * mask[:-1]).sum() / mask[:-1].sum().clamp_min(1) 
-                
-                valid_idx = mask_t.bool()
-                sigreg_img = self.sigreg(proj_z[valid_idx])
-                sigreg_msg = self.sigreg(proj_c[valid_idx])
+                z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                z_sender_hat = self.obs_predictor(h)
 
-                sigreg_loss = 0.5 * (sigreg_img + sigreg_msg )
-                lejepa_loss = (1- self.lambda_) * inv_loss + self.lambda_ * sigreg_loss 
+                z_sender_flat = flatten_conv_output(z_sender[:, :, :-2])  # [B, T, c`, h`, w`] => [B, T,d]
+                z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
 
-                agent_loss = lejepa_loss + vicreg_loss['total_loss']
+                z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
+                z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+
+                h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
+                h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
+                h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+                
+                agent_loss = self.lambda_ * z_pred_loss + (1 - self.lambda_) * h_pred_loss + vicreg_loss['total_loss']
                 batch_loss += agent_loss
 
                 num_valid = mask.sum().item()
@@ -205,14 +216,16 @@ def eval_epoch(self: DynamicsTrainer):
     return final_epoch_loss
        
 
-# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 8
+# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 10
 import wandb
 
 @patch
 def fit(self: DynamicsTrainer):
     self.model.to(self.device)
     self.msg_encoder.to(self.device)
-    self.projector.to(self.device)
+    self.msg_predictor.to(self.device)
+    self.obs_predictor.to(self.device)
+    # self.projector.to(self.device)
     
     cur_best = None
     lst_dfs = []
@@ -234,7 +247,9 @@ def fit(self: DynamicsTrainer):
             'epoch': epoch,
             'jepa': self.model.state_dict(),
             'msg_encoder': self.msg_encoder.state_dict(),
-            'projector': self.projector.state_dict(),
+            # 'projector': self.projector.state_dict(),
+            "msg_predictor": self.msg_predictor.state_dict(),
+            "obs_predictor": self.obs_predictor.state_dict(),
             'train_loss': train_loss,
             'val_loss': val_loss,
             'optimizer': self.optimizer.state_dict(),
