@@ -272,11 +272,11 @@ class JepaProjector(nn.Module):
 import torch
 import torch.nn as nn
 class MsgPred(nn.Module):
-    def __init__(self, h_dim=32):
+    def __init__(self, h_dim=32, in_channels=16):
         super().__init__()
         self.net = nn.Sequential(
             # Input: (B, 16, 15, 15)
-            nn.Conv2d(16, 32, kernel_size=3, stride=2), # -> (B, 32, 7, 7)
+            nn.Conv2d(in_channels, 32, kernel_size=3, stride=2), # -> (B, 32, 7, 7)
             nn.ReLU(),
             nn.Conv2d(32, 32, kernel_size=3, stride=2), # -> (B, 32, 3, 3)
             nn.ReLU(),
@@ -300,7 +300,7 @@ class MsgPred(nn.Module):
 import torch
 import torch.nn as nn
 class ObsPred(nn.Module):
-    def __init__(self, h_dim=32):
+    def __init__(self, h_dim=32, out_channels= 18):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(h_dim, 64),
@@ -312,7 +312,7 @@ class ObsPred(nn.Module):
             # Input: (B, 16, 7, 7)
             nn.ConvTranspose2d(16, 32, kernel_size=3, stride=2), # -> (B, 32, 15, 15)
             nn.ReLU(),
-            nn.Conv2d(32, 16, kernel_size=1) # -> (B, 16, 15, 15)
+            nn.Conv2d(32, out_channels, kernel_size=1) # -> (B, 16, 15, 15)
         )
 
     def forward(self, h):

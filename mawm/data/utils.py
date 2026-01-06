@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['base_tf', 'denormalize_tf', 'lejepa_train_tf', 'lejepa_test_tf', 'msg_tf', 'get_graphics_primitives', 'show_grid',
            'get_cell_color', 'get_grid_chars', 'generate_msg', 'MsgTransform', 'debug_channels', 'plot_grid',
-           'init_data', 'show_batch']
+           'init_data', 'show_batch', 'init_data_dist']
 
 # %% ../../nbs/01b_data.utils.ipynb 3
 from fastcore import *
@@ -308,3 +308,40 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
     plt.savefig(save_to, bbox_inches='tight')
     plt.savefig("pdf.pdf", bbox_inches='tight')
     plt.show()
+
+# %% ../../nbs/01b_data.utils.ipynb 47
+import torch
+def init_data_dist(
+    rank=0,
+    world_size=1,
+    collator=torch.utils.data.default_collate,
+):
+    train_ds = MarlGridDataset(
+        data_path = cfg.data.data_dir,
+        num_agents= len(cfg.env.agents),
+        seq_len= cfg.data.seq_len,
+        train= True,
+        transform= base_tf,
+        msg_tf= msg_tf
+    )
+
+    dist_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_ds, num_replicas=world_size, rank=rank, shuffle=True
+    )
+
+    data_loader = torch.utils.data.DataLoader(
+        train_ds,
+        collate_fn=collator,
+        sampler=dist_sampler,
+        batch_size=cfg.data.batch_size,
+        drop_last=cfg.data.loader.drop_last,
+        pin_memory=cfg.data.loader.pin_mem,
+        num_workers=cfg.data.loader.num_workers,
+        persistent_workers=(cfg.data.loader.num_workers > 0) and cfg.data.loader.persistent_workers,
+    )
+
+    # logger.info("VideoDataset unsupervised data loader created")
+
+    return data_loader, dist_sampler
+
+

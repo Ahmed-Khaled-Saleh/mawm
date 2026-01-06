@@ -101,9 +101,9 @@ def train_epoch(self: DynamicsTrainer, epoch):
             print(vicreg_loss)
             
             z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-            z_sender_hat = self.obs_predictor(h)
+            z_sender_hat = self.obs_predictor(h) # [B, T, d=32] => [B, T, C, H, W]
 
-            z_sender_flat = flatten_conv_output(z_sender[:, :, :-2])  # [B, T, c`, h`, w`] => [B, T,d]
+            z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
             z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
 
             z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
@@ -147,7 +147,7 @@ def train_epoch(self: DynamicsTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 9
+# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 8
 from einops import rearrange
 @patch
 def eval_epoch(self: DynamicsTrainer):
@@ -194,7 +194,7 @@ def eval_epoch(self: DynamicsTrainer):
                 z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
                 z_sender_hat = self.obs_predictor(h)
 
-                z_sender_flat = flatten_conv_output(z_sender[:, :, :-2])  # [B, T, c`, h`, w`] => [B, T,d]
+                z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
                 z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
 
                 z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
@@ -216,7 +216,7 @@ def eval_epoch(self: DynamicsTrainer):
     return final_epoch_loss
        
 
-# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 10
+# %% ../../nbs/05e_trainer.trainer_dynamics.ipynb 9
 import wandb
 
 @patch

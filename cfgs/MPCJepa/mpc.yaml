@@ -1,5 +1,5 @@
-project_name: DynamicsTRainer
-
+project_name: lejepa_marlgrid
+  
 epochs: 300
 loss_fn: CrossEntropyLoss
 writer: WandbWriter

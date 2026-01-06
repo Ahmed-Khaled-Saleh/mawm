@@ -653,7 +653,6 @@ def forward(self: ConvPredictor, current_state, curr_action, curr_msg):
     x = self.layers(x) 
     if self.config.residual:
         x = x + current_state
-
     return x
 
 # %% ../../../nbs/02f_models.dynamics.predictor.ipynb 16
