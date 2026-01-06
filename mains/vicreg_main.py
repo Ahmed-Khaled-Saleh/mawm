@@ -63,7 +63,7 @@ def init_opt(params):
 def main(cfg):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cfg.data.data_dir = "../nbs/data_test"
+    # cfg.data.data_dir = "../nbs/data_test"
     train_loader, val_loader = init_data(cfg)   
      
 
