@@ -16,7 +16,6 @@ from typing import Optional, NamedTuple
 import torch
 
 from ..cfg.pldm import ConfigBase
-from .dynamics.enums import PredictorConfig, PredictorOutput
 from functools import reduce
 import operator
 from .vision import build_backbone, BackboneConfig, BackboneOutput

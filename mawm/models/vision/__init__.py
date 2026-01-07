@@ -72,13 +72,13 @@ ENCODER_LAYERS_CONFIG = {
     "l2e": [(16, 16, 3, 2, 1), (16, 16, 3, 1, 1)],
 }
 
-# %% ../../../nbs/02d_models.vision.ipynb 6
+# %% ../../../nbs/02d_models.vision.ipynb 7
 class PassThrough(nn.Module):
     def forward(self, x):
         return x
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 7
+# %% ../../../nbs/02d_models.vision.ipynb 8
 from .enums import BackboneOutput
 class MLPNet(nn.Module):
     def __init__(self, output_dim: int = 64):
@@ -95,7 +95,7 @@ class MLPNet(nn.Module):
         out = BackboneOutput(encodings=out)
         return out
 
-# %% ../../../nbs/02d_models.vision.ipynb 8
+# %% ../../../nbs/02d_models.vision.ipynb 9
 from .enums import BackboneOutput
 from .base import SequenceBackbone
 import torch
@@ -167,7 +167,7 @@ class MeNet5(SequenceBackbone):
         return out
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 9
+# %% ../../../nbs/02d_models.vision.ipynb 10
 class ResizeConv2d(nn.Module):
     def __init__(
         self,
@@ -200,7 +200,7 @@ class ResizeConv2d(nn.Module):
         return x
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 10
+# %% ../../../nbs/02d_models.vision.ipynb 11
 class Canonical(nn.Module):
     def __init__(self, output_dim: int = 64):
         super().__init__()
@@ -224,7 +224,7 @@ class Canonical(nn.Module):
         x = BackboneOutput(encodings=x)
         return x
 
-# %% ../../../nbs/02d_models.vision.ipynb 11
+# %% ../../../nbs/02d_models.vision.ipynb 12
 from mawm.models.misc import  (
     build_mlp,
     Projector,
@@ -248,7 +248,7 @@ class MLPEncoder(SequenceBackbone):
         return x
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 12
+# %% ../../../nbs/02d_models.vision.ipynb 13
 class ObposEncoder1(SequenceBackbone):
     """
     Fused encoder for observation and pos state.
@@ -280,7 +280,7 @@ class ObposEncoder1(SequenceBackbone):
 
         return BackboneOutput(encodings=x)
 
-# %% ../../../nbs/02d_models.vision.ipynb 13
+# %% ../../../nbs/02d_models.vision.ipynb 14
 class ObposEncoder2(SequenceBackbone):
     """
     Distangled encoder for observation and pos state.
@@ -345,7 +345,7 @@ class ObposEncoder2(SequenceBackbone):
 
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 14
+# %% ../../../nbs/02d_models.vision.ipynb 16
 import torch
 import torch.nn as nn
 from ..utils import Expander2D, build_conv
@@ -444,7 +444,7 @@ class MeNet6(nn.Module):
     
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 15
+# %% ../../../nbs/02d_models.vision.ipynb 17
 import torch
 import torch.nn as nn
 from .enums import BackboneConfig
@@ -500,7 +500,7 @@ def build_backbone(
 
     return backbone
 
-# %% ../../../nbs/02d_models.vision.ipynb 24
+# %% ../../../nbs/02d_models.vision.ipynb 26
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

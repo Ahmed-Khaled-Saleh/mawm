@@ -312,22 +312,20 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
 # %% ../../nbs/01b_data.utils.ipynb 47
 import torch
 def init_data_dist(
-    rank=0,
-    world_size=1,
-    collator=torch.utils.data.default_collate,
+        cfg,
+        train= True,
+        collator=torch.utils.data.default_collate,
 ):
     train_ds = MarlGridDataset(
         data_path = cfg.data.data_dir,
         num_agents= len(cfg.env.agents),
         seq_len= cfg.data.seq_len,
-        train= True,
+        train= train,
         transform= base_tf,
         msg_tf= msg_tf
     )
 
-    dist_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_ds, num_replicas=world_size, rank=rank, shuffle=True
-    )
+    dist_sampler = torch.utils.data.distributed.DistributedSampler(train_ds)
 
     data_loader = torch.utils.data.DataLoader(
         train_ds,

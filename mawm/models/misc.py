@@ -268,7 +268,7 @@ class JepaProjector(nn.Module):
         return  proj_z[:-1], proj_c[:-1]
 
 
-# %% ../../nbs/02j_models.misc.ipynb 13
+# %% ../../nbs/02j_models.misc.ipynb 15
 import torch
 import torch.nn as nn
 class MsgPred(nn.Module):
@@ -284,6 +284,7 @@ class MsgPred(nn.Module):
             nn.Linear(32 * 3 * 3, 64),
             nn.ReLU(),
             nn.Linear(64, h_dim) # Output: 32
+
         )
 
     def forward(self, z):
@@ -296,7 +297,7 @@ class MsgPred(nn.Module):
             return out
         return self.net(z)
 
-# %% ../../nbs/02j_models.misc.ipynb 15
+# %% ../../nbs/02j_models.misc.ipynb 17
 import torch
 import torch.nn as nn
 class ObsPred(nn.Module):

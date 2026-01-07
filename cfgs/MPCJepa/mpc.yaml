@@ -1,6 +1,7 @@
 project_name: DynamicsTRainer
   
 epochs: 300
+save_every_freq: 5
 loss_fn: CrossEntropyLoss
 writer: WandbWriter
 noreload: False

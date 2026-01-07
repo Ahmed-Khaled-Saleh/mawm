@@ -29,7 +29,7 @@ from ..utils import *
 from .enums import PredictorConfig, PredictorOutput
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 6
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 7
 class RNNPredictor(torch.nn.Module):
     def __init__(
         self,
@@ -73,7 +73,7 @@ class RNNPredictor(torch.nn.Module):
         return self.rnn(inputs, h.unsqueeze(0).repeat(self.num_layers, 1, 1))[0]
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 7
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 8
 class RNNPredictorV3(torch.nn.Module):
     def __init__(
         self,
@@ -111,7 +111,7 @@ class RNNPredictorV3(torch.nn.Module):
         output = self.output_mlp(res[1][0])
         return res[1][0], output
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 8
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 9
 class RNNPredictorBurnin(torch.nn.Module):
     def __init__(
         self,
@@ -168,7 +168,7 @@ class RNNPredictorBurnin(torch.nn.Module):
         return outputs
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 9
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 10
 class RSSMPredictor(torch.nn.Module):
     def __init__(
         self,
@@ -267,7 +267,7 @@ class RSSMPredictor(torch.nn.Module):
 
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 10
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 11
 class SequencePredictor(torch.nn.Module):
     def __init__(
         self,
@@ -454,7 +454,7 @@ class SequencePredictor(torch.nn.Module):
         return output
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 12
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 13
 class MLPPredictor(SequencePredictor):
     def __init__(
         self,
@@ -490,7 +490,7 @@ class MLPPredictor(SequencePredictor):
         return out
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 13
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 14
 class RNNPredictorV2(SequencePredictor):
     def __init__(
         self,
@@ -558,7 +558,7 @@ class RNNPredictorV2(SequencePredictor):
 
 
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 14
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 16
 from ..utils import Expander2D
 ConvPredictorConfig = {
     "a": [(18, 32, 3, 1, 1), (32, 32, 3, 1, 1), (32, 16, 3, 1, 1)],
@@ -643,7 +643,7 @@ class ConvPredictor(nn.Module):
 
     
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 15
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 17
 @patch
 def forward(self: ConvPredictor, current_state, curr_action, curr_msg):
     bs, _, h, w = current_state.shape
@@ -655,7 +655,7 @@ def forward(self: ConvPredictor, current_state, curr_action, curr_msg):
         x = x + current_state
     return x
 
-# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 16
+# %% ../../../nbs/02f_models.dynamics.predictor.ipynb 18
 @patch
 def forward_multiple(
     self: ConvPredictor,
