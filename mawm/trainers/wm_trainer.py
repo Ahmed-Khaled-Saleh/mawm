@@ -69,6 +69,7 @@ def train_epoch(self: WMTrainer, epoch):
     total_running_loss = 0.0
     total_valid_steps = 0
 
+    self.logger.info(f"Device used: {self.device}")
     self.sampler.set_epoch(epoch)
     for batch_idx, data in enumerate(self.train_loader):
         self.optimizer.zero_grad()
@@ -89,6 +90,8 @@ def train_epoch(self: WMTrainer, epoch):
             pos = pos.to(self.device)
             act = act.to(self.device)
 
+            self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {pos.device}, {act.device}")
+
             for other_agent in self.agents:
                 if other_agent != agent_id:
                     obs_sender, pos_sender, msg, _, _,_ = data[other_agent].values()
@@ -96,6 +99,7 @@ def train_epoch(self: WMTrainer, epoch):
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
+                    self.logger.info(f"device used for other agent data: {obs_sender.device}, {pos_sender.device}, {msg.device}")
             
             h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
