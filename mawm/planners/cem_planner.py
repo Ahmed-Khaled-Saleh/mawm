@@ -140,6 +140,7 @@ def plan(self: DiscreteCEMPlanner, obs_0, obs_g, actions=None):
     return torch.argmax(probs, dim=-1), np.full(n_evals, np.inf)
 
 # %% ../../nbs/10a_planners.cem_planner.ipynb 25
+from ..models.utils import Expander2D
 class CEMPlanner:
     def __init__(self, model, msg_enc, msg_pred, obs_pred, 
                  action_dim= 5, horizon= 10, num_samples= 1000,
@@ -175,7 +176,9 @@ class CEMPlanner:
 
     @torch.no_grad()
     def plan(self, o_t, pos_t, o_g, m_other, other_actions):
-        z_t  = self.model.backbone(o_t.unsqueeze(0)) # [B=1, C, H, W] => [1, 18, 15, 15] #, position= pos_t.unsqueeze(0)
+        z_t  = self.model.backbone(o_t.unsqueeze(0)) # [B=1, C, H, W] => [1, 16, 15, 15] #, position= pos_t.unsqueeze(0)
+        pos_t = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0)) # [1, 2, 15, 15]
+        z_t = torch.cat([z_t, pos_t], dim=1) # [1, 18, 15, 15]
         z_g = self.model.backbone(o_g.unsqueeze(0)) # [B=1, C, H, W] => [1, 16, 15, 15]
 
         a_self = torch.multinomial(self.probs, self.num_samples, replacement=True).T # [num_samples, horizon] 
@@ -190,11 +193,11 @@ class CEMPlanner:
     def evolve(self, z_t, z_goal, h0_other, a_self, a_other):
         S = self.num_samples
 
-        curr_z_self = repeat(z_t, 'b c h w -> (b s) t c h w', b= 1, s=S, t= 1) # [s, t= 1, c=16, h=15, w=15]
+        curr_z_self = repeat(z_t, 'b c h w -> (b s) t c h w', b= 1, s=S, t= 1) # [s, t= 1, c=18, h=15, w=15]
         curr_h_other = repeat(h0_other, 'b t d -> s t (b d)', s=S) # [s, 1, 32]
         
         curr_z_other = self.obs_pred(curr_h_other)#[s, 1, 16, 15, 15]  
-        curr_h_self = self.msg_pred(curr_z_self) #[s, 1, 32]
+        curr_h_self = self.msg_pred(curr_z_self[:, :, :-2]) #[s, 1, 32]
 
         curr_z_self = rearrange(curr_z_self, "s t c h w -> (t s) c h w", t= 1)
         curr_z_other = rearrange(curr_z_other, "s t c h w -> (t s) c h w", t= 1)
@@ -202,12 +205,13 @@ class CEMPlanner:
         total_cost = torch.zeros(S, device=self.device)
 
         for t in range(self.horizon):
-            
+            # import pdb; pdb.set_trace()
             curr_h_other = rearrange(curr_h_other, "s t d -> (t s) d", t= 1)
             curr_h_self = rearrange(curr_h_self, "s t d -> (t s) d", t= 1)
 
             a_self_t = a_self[:, t].unsqueeze(1) # [1 500]
             a_other_t = a_other[:, t].unsqueeze(1) # [1, 500]
+            
 
             next_z_self = self.model.dynamics.forward(current_state = curr_z_self, curr_action= a_self_t, curr_msg= curr_h_other)
             next_z_other = self.model.dynamics.forward(current_state = curr_z_other, curr_action= a_other_t, curr_msg= curr_h_self)
