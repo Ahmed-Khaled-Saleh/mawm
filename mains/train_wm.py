@@ -68,13 +68,20 @@ def main(cfg):
 
     dist.init_process_group(backend='nccl')
 
-    seed = cfg.get('seed', 42)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    # seed = cfg.get('seed', _GLOBAL_SEED)
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # torch.backends.cudnn.benchmark = True
+    _GLOBAL_SEED = 0
+    random.seed(_GLOBAL_SEED)
+    np.random.seed(_GLOBAL_SEED)
+    torch.manual_seed(_GLOBAL_SEED)
     torch.backends.cudnn.benchmark = True
 
     local_rank = int(os.environ['LOCAL_RANK'])
     torch.cuda.set_device(local_rank)
+    
+    logger = get_logger(__name__, force=True)
     logger.info(f"Initialized process with local_rank: {local_rank}")
 
     verbose = dist.get_rank() == 0  # print only on global_rank==0
@@ -108,7 +115,7 @@ def main(cfg):
          'obs_predictor': obs_pred,
     }
 
-    logger = get_logger(__name__, force=True)
+    
     writer = WandbWriter(cfg)
     trainer = WMTrainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                         device= local_rank, earlystopping= None, scheduler= scheduler,
