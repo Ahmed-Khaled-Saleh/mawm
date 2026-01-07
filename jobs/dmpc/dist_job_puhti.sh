@@ -22,5 +22,5 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
+srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
 # srun python vicreg_main.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
