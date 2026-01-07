@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=project_2009050
 #SBATCH --job-name=distributed_wm_training
-#SBATCH --partition=gpusmall
+#SBATCH --partition=gpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=100G
