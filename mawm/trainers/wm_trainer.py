@@ -169,7 +169,7 @@ def fit(self: WMTrainer):
     lst_dfs = []
 
     for epoch in range(1, self.cfg.epochs + 1):
-        self.logger.info("Epoch %d" % (epoch + 1))
+        self.logger.info("Epoch %d" % (epoch))
         lr = self.scheduler.adjust_learning_rate(epoch)
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)
