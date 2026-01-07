@@ -21,6 +21,12 @@ data:
   V: 4
   obs_key: pov
   name: marlrid
+  loader:
+    num_workers: 0
+    pin_memory: true
+    drop_last: true
+    shuffle: true
+    persistent_workers: false
 
 
 model:
