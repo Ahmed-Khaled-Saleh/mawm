@@ -333,7 +333,7 @@ def init_data_dist(
         sampler=dist_sampler,
         batch_size=cfg.data.batch_size,
         drop_last=cfg.data.loader.drop_last,
-        pin_memory=cfg.data.loader.pin_mem,
+        pin_memory=cfg.data.loader.pin_memory,
         num_workers=cfg.data.loader.num_workers,
         persistent_workers=(cfg.data.loader.num_workers > 0) and cfg.data.loader.persistent_workers,
     )
