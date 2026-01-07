@@ -80,7 +80,7 @@ def main(cfg):
 
     local_rank = int(os.environ['LOCAL_RANK'])
     torch.cuda.set_device(local_rank)
-    
+
     logger = get_logger(__name__, force=True)
     logger.info(f"Initialized process with local_rank: {local_rank}")
 
@@ -115,7 +115,7 @@ def main(cfg):
          'obs_predictor': obs_pred,
     }
 
-    
+    logger.info(f"Starting training... from {local_rank}")
     writer = WandbWriter(cfg)
     trainer = WMTrainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                         device= local_rank, earlystopping= None, scheduler= scheduler,

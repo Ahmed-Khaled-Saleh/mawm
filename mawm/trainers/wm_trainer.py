@@ -27,7 +27,7 @@ class WMTrainer(Trainer):
                  scheduler=None, writer= None, verbose= None, logger= None):
         
         self.cfg = cfg
-        self.device = device if device else torch.device('cpu')
+        self.device = device
 
         self.train_loader = train_loader
         self.sampler = sampler
