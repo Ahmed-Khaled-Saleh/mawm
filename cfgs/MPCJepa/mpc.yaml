@@ -1,4 +1,4 @@
-project_name: DynamicsTRainer
+project_name: DistributedWMTraining
   
 epochs: 300
 save_every_freq: 5
