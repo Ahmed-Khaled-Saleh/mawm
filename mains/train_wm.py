@@ -25,7 +25,7 @@ from mawm.trainers.wm_trainer import WMTrainer
 
 from torch.nn.parallel import DistributedDataParallel
 from mawm.data.utils import init_data_dist
-from mawm.dist.model_utils import init_models_dist
+from mawm.distributed.model_utils import init_models_dist
 from mawm.optimizers.utils import init_opt_dis
 import torch.distributed as dist
 
