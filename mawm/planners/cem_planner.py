@@ -203,9 +203,9 @@ class CEMPlanner:
         curr_z_other = rearrange(curr_z_other, "s t c h w -> (t s) c h w", t= 1)
 
         total_cost = torch.zeros(S, device=self.device)
-
+        # import pdb; pdb.set_trace()
         for t in range(self.horizon):
-            # import pdb; pdb.set_trace()
+            
             curr_h_other = rearrange(curr_h_other, "s t d -> (t s) d", t= 1)
             curr_h_self = rearrange(curr_h_self, "s t d -> (t s) d", t= 1)
 
@@ -216,8 +216,8 @@ class CEMPlanner:
             next_z_self = self.model.dynamics.forward(current_state = curr_z_self, curr_action= a_self_t, curr_msg= curr_h_other)
             next_z_other = self.model.dynamics.forward(current_state = curr_z_other, curr_action= a_other_t, curr_msg= curr_h_self)
 
-            next_h_self = self.msg_pred(rearrange(next_z_self, '(s t) c h w -> s t c h w ', t= 1))
-            next_h_other = self.msg_pred(rearrange(next_z_other, '(s t) c h w -> s t c h w ', t= 1))
+            next_h_self = self.msg_pred(rearrange(next_z_self[:, :-2], '(s t) c h w -> s t c h w ', t= 1))
+            next_h_other = self.msg_pred(rearrange(next_z_other[:, :-2], '(s t) c h w -> s t c h w ', t= 1))
 
             total_cost += (next_z_self[:, :-2] - z_goal.unsqueeze(1)).pow(2).mean(dim=(2, 3, 4)).squeeze()
 

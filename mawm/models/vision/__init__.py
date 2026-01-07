@@ -12,7 +12,7 @@ import torch
 import torch.distributions as td
 import torch.nn as nn
 from fastcore.utils import *
-from fastcore.all import *
+
 from torch import nn
 from torch.nn import functional as F
 

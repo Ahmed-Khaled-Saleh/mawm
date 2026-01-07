@@ -42,7 +42,7 @@ class WMTrainer(Trainer):
         self.scheduler = scheduler
 
         self.writer = writer
-        self.loss_meter = AverageMeter()
+        # self.loss_meter = AverageMeter()
         self.verbose = verbose
         self.logger = logger
 
@@ -53,7 +53,7 @@ class WMTrainer(Trainer):
 
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
-        self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid')
+        self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid', self.cfg.now)
         if not os.path.exists(self.dmpc_dir):
             os.makedirs(self.dmpc_dir)
 
@@ -160,7 +160,7 @@ CHECKPOINT_FREQ = 1
 @patch
 def fit(self: WMTrainer):
 
-    self.logger.info("Epoch %d" % (epoch + 1))
+    
     latest_file = "latest.pt"
     folder = self.dmpc_dir
     latest_path = os.path.join(folder, latest_file)
@@ -169,6 +169,7 @@ def fit(self: WMTrainer):
     lst_dfs = []
 
     for epoch in range(1, self.cfg.epochs + 1):
+        self.logger.info("Epoch %d" % (epoch + 1))
         lr = self.scheduler.adjust_learning_rate(epoch)
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)

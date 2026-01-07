@@ -11,7 +11,7 @@ import torch
 import torch.distributions as td
 import torch.nn as nn
 from fastcore.utils import *
-from fastcore.all import *
+
 
 # %% ../../../nbs/02a_models.base.dense.ipynb 4
 import numpy as np
