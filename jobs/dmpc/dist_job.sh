@@ -3,7 +3,7 @@
 #SBATCH --job-name=distributed_wm_training
 #SBATCH --partition=gpusmall
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=100G
 #SBATCH --time=2:00:00
 #SBATCH --gres=gpu:a100:2
@@ -22,5 +22,5 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
+srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
 # srun python vicreg_main.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
