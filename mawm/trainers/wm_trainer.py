@@ -55,7 +55,7 @@ class WMTrainer(Trainer):
 
         self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid', self.cfg.now)
         if not os.path.exists(self.dmpc_dir):
-            os.makedirs(self.dmpc_dir)
+            os.makedirs(self.dmpc_dir , exist_ok=True)
 
     
 
