@@ -18,7 +18,7 @@ import pandas as pd
 from .trainer import Trainer
 from ..models.utils import save_checkpoint
 from ..logger.base import AverageMeter
-from ..losses.sigreg import SIGReg
+from ..losses.sigreg import SIGReg, SIGRegDistributed
 from ..losses.vicreg import VICReg
 from ..models.utils import flatten_conv_output
 
@@ -48,6 +48,7 @@ class WMTrainer(Trainer):
         self.logger = logger
 
         self.sigreg = SIGReg().to(self.device)
+        self.disSigReg = SIGRegDistributed().to(self.device)
 
         # self.vicreg = VICReg(self.cfg).to(self.device)
         self.lambda_ = self.cfg.loss.lambda_
@@ -64,10 +65,10 @@ class WMTrainer(Trainer):
 
 # %% ../../nbs/05a_trainer.wm.ipynb 6
 @patch
-def criterion(self: WMTrainer, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat):
+def criterion(self: WMTrainer, global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat):
 
-    sigreg_img = self.sigreg(Z0)
-    sigreg_msg = self.sigreg(h)
+    sigreg_img = self.disSigReg(Z0, global_step= global_step)
+    sigreg_msg = self.disSigReg(h, global_step= global_step)
     transition_mask = mask_t[1:] * mask_t[:-1]
 
     diff = (Z0[1:] - Z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
@@ -111,6 +112,7 @@ def train_epoch(self: WMTrainer, epoch):
     self.logger.info(f"Device used: {self.device}")
     self.sampler.set_epoch(epoch)
     for batch_idx, data in enumerate(self.train_loader):
+        global_step = epoch * len(self.train_loader) + batch_idx
         self.optimizer.zero_grad()
         batch_loss = 0
 
@@ -154,7 +156,7 @@ def train_epoch(self: WMTrainer, epoch):
             z_sender_hat = self.obs_predictor(h) # [B, T, d=32] => [B, T, C, H, W]
             h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
             
-            losses = self.criterion(Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
+            losses = self.criterion(global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
 
             self.writer.write({
                 f'{agent_id}/train/sigreg_img': losses['sigreg_img'].item(),
