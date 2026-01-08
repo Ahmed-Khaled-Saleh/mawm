@@ -20,6 +20,7 @@ from ..models.utils import save_checkpoint
 from ..logger.base import AverageMeter
 from ..losses.sigreg import SIGReg
 from ..losses.vicreg import VICReg
+from ..models.utils import flatten_conv_output
 
 class WMTrainer(Trainer):
     def __init__(self, cfg, model, train_loader, sampler,
@@ -46,9 +47,9 @@ class WMTrainer(Trainer):
         self.verbose = verbose
         self.logger = logger
 
-        # self.sigreg = SIGReg().to(self.device)
+        self.sigreg = SIGReg().to(self.device)
 
-        self.vicreg = VICReg(self.cfg).to(self.device)
+        # self.vicreg = VICReg(self.cfg).to(self.device)
         self.lambda_ = self.cfg.loss.lambda_
 
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
@@ -60,6 +61,41 @@ class WMTrainer(Trainer):
     
 
 # %% ../../nbs/05a_trainer.wm.ipynb 6
+@patch
+def criterion(self: WMTrainer, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat):
+
+    sigreg_img = self.sigreg(Z0)
+    sigreg_msg = self.sigreg(h)
+
+    diff = (Z0[1:] - Z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
+    sim_loss = (diff * mask_t).sum() / mask_t.sum().clamp_min(1)
+
+    if self.cfg.loss.vicreg.sim_coeff_t:
+        diff_t = ( Z0[1:] -  Z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
+        sim_loss_t = (diff_t * mask_t).sum() / mask_t.sum().clamp_min(1)
+    else:
+        sim_loss_t = torch.zeros([1])
+
+    z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
+    z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
+
+    z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
+    z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+
+    h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
+    h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+
+    return {
+        'sigreg_img': sigreg_img,
+        'sigreg_msg': sigreg_msg,
+        'sim_loss': sim_loss,
+        'sim_loss_t': sim_loss_t,
+        'z_pred_loss': z_pred_loss,
+        'h_pred_loss': h_pred_loss
+    }
+            
+
+# %% ../../nbs/05a_trainer.wm.ipynb 7
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
@@ -104,8 +140,8 @@ def train_epoch(self: WMTrainer, epoch):
             h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
             Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
-            vicreg_loss = self.vicreg(Z0, Z, mask= mask_t)
-            self.logger.info("Vicreg losses: %s" % str({k: v.item() for k, v in vicreg_loss.items()}))
+            # vicreg_loss = self.vicreg(Z0, Z, mask= mask_t)
+            # self.logger.info("Vicreg losses: %s" % str({k: v.item() for k, v in vicreg_loss.items()}))
             
             if hasattr(self.model, 'module'):
                 z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
@@ -113,29 +149,21 @@ def train_epoch(self: WMTrainer, epoch):
                 z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
                 
             z_sender_hat = self.obs_predictor(h) # [B, T, d=32] => [B, T, C, H, W]
-
-            z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
-            z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
-
-            z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
-            z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
-
             h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
-            h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
-            h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
             
-            z_alignment = z_pred_loss * 250.0 
-            h_alignment = h_pred_loss * 2000.0
+            losses = self.criterion(Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
+            self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
+            
+            jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
+            jepa_2_loss = (1 - self.lambda_) * losses['z_pred_loss'] + self.lambda_ * losses['sigreg_msg']
+            jepa_3_loss = (1 - self.lambda_) * losses['h_pred_loss']
+            self.logger.info(f"JEPA Losses: jepa_1_loss: {jepa_1_loss.item():.4f}, jepa_2_loss: {jepa_2_loss.item():.4f}, jepa_3_loss: {jepa_3_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
 
-            # 3. Combine
-            agent_loss = (
-                vicreg_loss['total_loss'] + 
-                self.lambda_ * z_alignment + 
-                (1 - self.lambda_) * h_alignment
-            )
-                        
+            agent_loss = jepa_1_loss + jepa_2_loss + jepa_3_loss + self.cfg.loss.vicreg.sim_coeff_t * losses['sim_loss_t']
+            self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
+            
             # agent_loss = self.lambda_ * z_pred_loss + (1 - self.lambda_) * h_pred_loss + vicreg_loss['total_loss']
-            self.logger.info(f"Agent: {agent_id}, z_pred_loss: {z_alignment.item():.4f}, h_pred_loss: {h_alignment.item():.4f}, vicreg_loss: {vicreg_loss['total_loss'].item():.4f}, agent_loss: {agent_loss.item():.4f}")
+            # self.logger.info(f"Agent: {agent_id}, z_pred_loss: {z_alignment.item():.4f}, h_pred_loss: {h_alignment.item():.4f}, vicreg_loss: {vicreg_loss['total_loss'].item():.4f}, agent_loss: {agent_loss.item():.4f}")
             batch_loss += agent_loss
 
             num_valid = mask.sum().item()
@@ -158,7 +186,7 @@ def train_epoch(self: WMTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05a_trainer.wm.ipynb 8
+# %% ../../nbs/05a_trainer.wm.ipynb 9
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
