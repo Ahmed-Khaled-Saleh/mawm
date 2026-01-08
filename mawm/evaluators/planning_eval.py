@@ -97,7 +97,7 @@ def eval_all_agents(self: PlanEvaluator, env, preprocessor=preprocessor, negotia
         print(f"Step: {step}, Actions taken: {actions}, Rewards: {rewards}, Done: {done}")
         # Shift the remaining plan forward by 1 and pad with a 0 (Stay)
         for agent in agents:
-            shifted_plan = torch.cat([intents[agent][1:], torch.zeros(1, dtype=torch.long)])
+            shifted_plan = torch.cat([intents[agent][1:], torch.zeros(1, dtype=torch.long, device=intents[agent].device)])
             intents[agent] = shifted_plan
 
         if done['__all__']:
