@@ -66,15 +66,16 @@ def criterion(self: WMTrainer, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender
 
     sigreg_img = self.sigreg(Z0)
     sigreg_msg = self.sigreg(h)
+    transition_mask = mask_t[1:] * mask_t[:-1]
 
     diff = (Z0[1:] - Z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
-    sim_loss = (diff * mask_t).sum() / mask_t.sum().clamp_min(1)
+    sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp_min(1)
 
     if self.cfg.loss.vicreg.sim_coeff_t:
         diff_t = ( Z0[1:] -  Z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
-        sim_loss_t = (diff_t * mask_t).sum() / mask_t.sum().clamp_min(1)
+        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp_min(1)
     else:
-        sim_loss_t = torch.zeros([1])
+        sim_loss_t = torch.zeros([1], device=self.device)
 
     z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
     z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
