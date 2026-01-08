@@ -51,6 +51,8 @@ class WMTrainer(Trainer):
 
         # self.vicreg = VICReg(self.cfg).to(self.device)
         self.lambda_ = self.cfg.loss.lambda_
+        self.W_H_PRED = self.cfg.loss.W_H_PRED
+        self.W_SIM_T = self.cfg.loss.W_SIM_T
 
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
@@ -153,14 +155,24 @@ def train_epoch(self: WMTrainer, epoch):
             h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
             
             losses = self.criterion(Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
+
+            self.writer.write({
+                f'{agent_id}/train/sigreg_img': losses['sigreg_img'].item(),
+                f'{agent_id}/train/sigreg_msg': losses['sigreg_msg'].item(),
+                f'{agent_id}/train/sim_loss': losses['sim_loss'].item(),
+                f'{agent_id}/train/sim_loss_t': losses['sim_loss_t'].item(),
+                f'{agent_id}/train/z_pred_loss': losses['z_pred_loss'].item(),
+                f'{agent_id}/train/h_pred_loss': losses['h_pred_loss'].item(),
+            })
+            
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
             jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
             jepa_2_loss = (1 - self.lambda_) * losses['z_pred_loss'] + self.lambda_ * losses['sigreg_msg']
-            jepa_3_loss = (1 - self.lambda_) * losses['h_pred_loss']
+            jepa_3_loss = self.W_H_PRED * losses['h_pred_loss']
             self.logger.info(f"JEPA Losses: jepa_1_loss: {jepa_1_loss.item():.4f}, jepa_2_loss: {jepa_2_loss.item():.4f}, jepa_3_loss: {jepa_3_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
 
-            agent_loss = jepa_1_loss + jepa_2_loss + jepa_3_loss + self.cfg.loss.vicreg.sim_coeff_t * losses['sim_loss_t']
+            agent_loss = jepa_1_loss + jepa_2_loss + jepa_3_loss + self.W_SIM_T * losses['sim_loss_t']
             self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
             
             # agent_loss = self.lambda_ * z_pred_loss + (1 - self.lambda_) * h_pred_loss + vicreg_loss['total_loss']

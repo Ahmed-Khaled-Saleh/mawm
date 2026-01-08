@@ -62,6 +62,7 @@ class DiscreteCEMPlanner():
 # %% ../../nbs/10a_planners.cem_planner.ipynb 5
 @patch
 def plan(self: DiscreteCEMPlanner, obs_0, obs_g, actions=None):
+    self.probs = torch.full((self.horizon, self.action_dim), 1.0/self.action_dim).to(self.device)
     trans_obs_0 = self.preprocessor(obs_0).to(self.device)
     trans_obs_g = self.preprocessor(obs_g).to(self.device)
     
@@ -139,89 +140,107 @@ def plan(self: DiscreteCEMPlanner, obs_0, obs_g, actions=None):
     # Return the most likely action sequence
     return torch.argmax(probs, dim=-1), np.full(n_evals, np.inf)
 
-# %% ../../nbs/10a_planners.cem_planner.ipynb 25
+# %% ../../nbs/10a_planners.cem_planner.ipynb 27
 from ..models.utils import Expander2D
+import torch
+from einops import repeat, rearrange
+
 class CEMPlanner:
     def __init__(self, model, msg_enc, msg_pred, obs_pred, 
-                 action_dim= 5, horizon= 10, num_samples= 1000,
-                 num_elites=100, opt_steps=100):
+                 action_dim=5, horizon=10, num_samples=1000,
+                 num_elites=100, opt_steps=10):
         
-        self.probs = torch.full((horizon, action_dim), 1.0/action_dim) # Uniform initial distribution of shape [Horizon, Action_Dim]
         self.model = model
         self.msg_enc = msg_enc
         self.msg_pred = msg_pred
         self.obs_pred = obs_pred
-        self.action_dim = action_dim
+        self.action_dim = action_dim # Number of discrete choices (0-4)
         self.horizon = horizon
         self.num_samples = num_samples
         self.num_elites = num_elites
         self.opt_steps = opt_steps
         self.device = 'cpu'
         
-
-    def update_dist(self, probs, samples, costs, num_elites=50):
-
-        values, elite_indices = torch.topk(-costs, num_elites)
-        elites = samples[elite_indices] # [num_elites, Horizon]
+    def update_dist(self, probs, samples, costs, num_elites):
+        # We want to MINIMIZE cost, so we take the topk of negative costs
+        _, elite_indices = torch.topk(-costs, num_elites)
+        elites = samples[elite_indices] # [num_elites, horizon]
         
-        # Update probabilities for the next round
-        new_probs = torch.full_like(probs, 0.01 / probs.shape[-1])
-        for t in range(probs.shape[0]):
-            new_probs[t].scatter_add_(0, elites[:, t], torch.ones(num_elites) * (0.99 / num_elites))
+        new_probs = torch.zeros_like(probs)
+        for t in range(self.horizon):
+            counts = torch.bincount(elites[:, t], minlength=self.action_dim).float()
+            new_probs[t] = counts / num_elites
         
-        best_plan = elites[0]
+        # Laplace smoothing to ensure we always have some exploration noise
+        epsilon = 0.01
+        new_probs = (1 - epsilon) * new_probs + (epsilon / self.action_dim)
         
-        return new_probs, best_plan
-
+        return new_probs, elites[0]
 
     @torch.no_grad()
     def plan(self, o_t, pos_t, o_g, m_other, other_actions):
-        z_t  = self.model.backbone(o_t.unsqueeze(0)) # [B=1, C, H, W] => [1, 16, 15, 15] #, position= pos_t.unsqueeze(0)
-        pos_t = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0)) # [1, 2, 15, 15]
-        z_t = torch.cat([z_t, pos_t], dim=1) # [1, 18, 15, 15]
-        z_g = self.model.backbone(o_g.unsqueeze(0)) # [B=1, C, H, W] => [1, 16, 15, 15]
+        # RESET: Start fresh so we don't get stuck in a local minimum from the last step
+        current_probs = torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device)
 
-        a_self = torch.multinomial(self.probs, self.num_samples, replacement=True).T # [num_samples, horizon] 
+        z_t = self.model.backbone(o_t.unsqueeze(0)) 
+        pos_t_expanded = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0))
+        z_t = torch.cat([z_t, pos_t_expanded], dim=1) 
+        z_g = self.model.backbone(o_g.unsqueeze(0)) 
         
-        h0_other = self.msg_enc(m_other.unsqueeze(0).unsqueeze(1)) # [5, 7, 7] => [1, 1, 32]
-        a_other = other_actions.repeat(self.num_samples, 1) # [num_samples, horizon]
+        h0_other = self.msg_enc(m_other.unsqueeze(0).unsqueeze(1)) 
+        a_other = other_actions.repeat(self.num_samples, 1) 
 
-        total_costs = self.evolve(z_t, z_g, h0_other, a_self, a_other)
-        self.probs, best_plan = self.update_dist(self.probs, a_self, total_costs, self.num_elites)
+        best_plan = None
+        for i in range(self.opt_steps):
+            # Sample sequences: [num_samples, horizon]
+            a_self = torch.multinomial(current_probs, self.num_samples, replacement=True).T 
+            
+            total_costs = self.evolve(z_t, z_g, h0_other, a_self, a_other)
+            
+            # DEBUG: Uncomment this to see if costs are actually changing
+            if i == 0: print(f"Cost Std: {total_costs.std():.6f}, Min: {total_costs.min():.4f}")
+
+            current_probs, best_plan = self.update_dist(current_probs, a_self, total_costs, self.num_elites)
+
         return best_plan
 
     def evolve(self, z_t, z_goal, h0_other, a_self, a_other):
         S = self.num_samples
-
-        curr_z_self = repeat(z_t, 'b c h w -> (b s) t c h w', b= 1, s=S, t= 1) # [s, t= 1, c=18, h=15, w=15]
-        curr_h_other = repeat(h0_other, 'b t d -> s t (b d)', s=S) # [s, 1, 32]
         
-        curr_z_other = self.obs_pred(curr_h_other)#[s, 1, 16, 15, 15]  
-        curr_h_self = self.msg_pred(curr_z_self[:, :, :-2]) #[s, 1, 32]
+        # Ensure z_goal is ready for broadcasting: [1, C, H, W]
+        # We strip the last 2 channels if your goal doesn't include the pos_t expansion
+        z_goal_target = z_goal 
 
-        curr_z_self = rearrange(curr_z_self, "s t c h w -> (t s) c h w", t= 1)
-        curr_z_other = rearrange(curr_z_other, "s t c h w -> (t s) c h w", t= 1)
+        curr_z_self = repeat(z_t, 'b c h w -> (b s) c h w', s=S)
+        curr_h_other = repeat(h0_other, 'b t d -> (s b t) d', s=S)
+        
+        # Initial imagined states for the other agent
+        curr_z_other = rearrange(self.obs_pred(curr_h_other.unsqueeze(1)), "s t c h w -> (s t) c h w")
+        curr_h_self = self.msg_pred(curr_z_self[:, :-2].unsqueeze(1)).squeeze(1)
 
         total_cost = torch.zeros(S, device=self.device)
-        # import pdb; pdb.set_trace()
+        
         for t in range(self.horizon):
+            a_self_t = a_self[:, t].unsqueeze(1) # [S, 1]
+            a_other_t = a_other[:, t].unsqueeze(1) # [S, 1]
             
-            curr_h_other = rearrange(curr_h_other, "s t d -> (t s) d", t= 1)
-            curr_h_self = rearrange(curr_h_self, "s t d -> (t s) d", t= 1)
+            # Forward dynamics
+            next_z_self = self.model.dynamics.forward(current_state=curr_z_self, curr_action=a_self_t, curr_msg=curr_h_other)
+            next_z_other = self.model.dynamics.forward(current_state=curr_z_other, curr_action=a_other_t, curr_msg=curr_h_self)
 
-            a_self_t = a_self[:, t].unsqueeze(1) # [1 500]
-            a_other_t = a_other[:, t].unsqueeze(1) # [1, 500]
+            # Predict next messages
+            curr_h_self = self.msg_pred(next_z_self[:, :-2].unsqueeze(1)).squeeze(1)
+            curr_h_other = self.msg_pred(next_z_other[:, :-2].unsqueeze(1)).squeeze(1)
+
+            # --- CRITICAL: Cost calculation ---
+            # Compare only the latent state (excluding position channels if necessary)
+            # next_z_self[:, :-2] is [S, 16, 15, 15]
+            # z_goal_target is [1, 16, 15, 15]
+            diff = next_z_self[:, :-2] - z_goal_target
             
-
-            next_z_self = self.model.dynamics.forward(current_state = curr_z_self, curr_action= a_self_t, curr_msg= curr_h_other)
-            next_z_other = self.model.dynamics.forward(current_state = curr_z_other, curr_action= a_other_t, curr_msg= curr_h_self)
-
-            next_h_self = self.msg_pred(rearrange(next_z_self[:, :-2], '(s t) c h w -> s t c h w ', t= 1))
-            next_h_other = self.msg_pred(rearrange(next_z_other[:, :-2], '(s t) c h w -> s t c h w ', t= 1))
-
-            total_cost += (next_z_self[:, :-2] - z_goal.unsqueeze(1)).pow(2).mean(dim=(2, 3, 4)).squeeze()
+            # Step-wise cost (MSE)
+            total_cost += diff.pow(2).mean(dim=(1, 2, 3))
 
             curr_z_self, curr_z_other = next_z_self, next_z_other
-            curr_h_self, curr_h_other = next_h_self, next_h_other
 
         return total_cost
