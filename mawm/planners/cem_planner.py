@@ -140,106 +140,165 @@ def plan(self: DiscreteCEMPlanner, obs_0, obs_g, actions=None):
     # Return the most likely action sequence
     return torch.argmax(probs, dim=-1), np.full(n_evals, np.inf)
 
-# %% ../../nbs/10a_planners.cem_planner.ipynb 27
-from ..models.utils import Expander2D
+# %% ../../nbs/10a_planners.cem_planner.ipynb 28
 import torch
 from einops import repeat, rearrange
+from ..models.utils import Expander2D
 
 class CEMPlanner:
     def __init__(self, model, msg_enc, msg_pred, obs_pred, 
                  action_dim=5, horizon=10, num_samples=1000,
-                 num_elites=100, opt_steps=10):
+                 num_elites=100, opt_steps=10, device='cpu'):
         
         self.model = model
         self.msg_enc = msg_enc
         self.msg_pred = msg_pred
         self.obs_pred = obs_pred
-        self.action_dim = action_dim # Number of discrete choices (0-4)
+        self.action_dim = action_dim
         self.horizon = horizon
         self.num_samples = num_samples
         self.num_elites = num_elites
         self.opt_steps = opt_steps
-        self.device = 'cpu'
+        self.device = device
         
-    def update_dist(self, probs, samples, costs, num_elites):
-        # We want to MINIMIZE cost, so we take the topk of negative costs
+        # Hyperparameters for improved stability
+        self.alpha = 0.3  # Momentum for distribution update
+        self.epsilon = 0.01  # Laplace smoothing
+        self.temp_start = 1.0  # Initial temperature
+        self.temp_end = 0.5  # Final temperature
+        
+    def update_dist(self, probs, samples, costs, num_elites, iteration):
+        """Update probability distribution using elite samples with momentum."""
+        # Select elites (minimize cost)
         _, elite_indices = torch.topk(-costs, num_elites)
-        elites = samples[elite_indices] # [num_elites, horizon]
+        elites = samples[elite_indices]
         
-        new_probs = torch.zeros_like(probs)
+        # Compute empirical distribution from elites
+        empirical_probs = torch.zeros_like(probs)
         for t in range(self.horizon):
             counts = torch.bincount(elites[:, t], minlength=self.action_dim).float()
-            new_probs[t] = counts / num_elites
+            empirical_probs[t] = counts / num_elites
         
-        # Laplace smoothing to ensure we always have some exploration noise
-        epsilon = 0.01
-        new_probs = (1 - epsilon) * new_probs + (epsilon / self.action_dim)
+        # Momentum update for stability
+        new_probs = self.alpha * empirical_probs + (1 - self.alpha) * probs
+        
+        # Laplace smoothing
+        new_probs = (1 - self.epsilon) * new_probs + (self.epsilon / self.action_dim)
+        
+        # Temperature annealing for sharpening
+        temp = self.temp_start + (self.temp_end - self.temp_start) * (iteration / self.opt_steps)
+        new_probs = new_probs ** (1 / temp)
+        new_probs = new_probs / new_probs.sum(dim=1, keepdim=True)
         
         return new_probs, elites[0]
 
     @torch.no_grad()
-    def plan(self, o_t, pos_t, o_g, m_other, other_actions):
-        # RESET: Start fresh so we don't get stuck in a local minimum from the last step
-        current_probs = torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device)
-
-        z_t = self.model.backbone(o_t.unsqueeze(0)) 
-        pos_t_expanded = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0))
-        z_t = torch.cat([z_t, pos_t_expanded], dim=1) 
-        z_g = self.model.backbone(o_g.unsqueeze(0)) 
+    def plan(self, o_t, o_g, pos_t, m_other, other_actions):
+        """Plan action sequence using CEM."""
+        # Move inputs to device
+        o_t = o_t.to(self.device)
+        o_g = o_g.to(self.device)
+        pos_t = pos_t.to(self.device)
+        m_other = m_other.to(self.device)
+        other_actions = other_actions.to(self.device)
         
-        h0_other = self.msg_enc(m_other.unsqueeze(0).unsqueeze(1)) 
-        a_other = other_actions.repeat(self.num_samples, 1) 
+        # Initialize uniform distribution
+        current_probs = torch.full(
+            (self.horizon, self.action_dim), 
+            1.0 / self.action_dim, 
+            device=self.device
+        )
+
+        # Encode current state and goal
+        z_t = self.model.backbone(o_t.unsqueeze(0))
+        pos_t_expanded = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0))
+        z_t = torch.cat([z_t, pos_t_expanded], dim=1)
+        
+        z_g = self.model.backbone(o_g.unsqueeze(0))
+        # Match dimensions with cost calculation (exclude position channels)
+        z_goal_target = z_g#[:, :-2]
+        
+        # Encode other agent's message
+        h0_other = self.msg_enc(m_other.unsqueeze(0).unsqueeze(1))
+        a_other = other_actions.repeat(self.num_samples, 1)
 
         best_plan = None
+        best_cost = float('inf')
+        
         for i in range(self.opt_steps):
-            # Sample sequences: [num_samples, horizon]
-            a_self = torch.multinomial(current_probs, self.num_samples, replacement=True).T 
+            # Sample action sequences
+            a_self = torch.multinomial(
+                current_probs, 
+                self.num_samples, 
+                replacement=True
+            ).T.to(self.device)
             
-            total_costs = self.evolve(z_t, z_g, h0_other, a_self, a_other)
+            # Evaluate sampled sequences
+            total_costs = self.evolve(z_t, z_goal_target, h0_other, a_self, a_other)
             
-            # DEBUG: Uncomment this to see if costs are actually changing
-            if i == 0: print(f"Cost Std: {total_costs.std():.6f}, Min: {total_costs.min():.4f}")
+            # Track best solution
+            min_cost = total_costs.min()
+            if min_cost < best_cost:
+                best_cost = min_cost
+                best_idx = total_costs.argmin()
+                best_plan = a_self[best_idx]
+            
+            # Debug info
+            if i == 0 or i == self.opt_steps - 1:
+                print(f"Iter {i}: Cost μ={total_costs.mean():.4f}, "
+                      f"Std={total_costs.std():.4f}, min={min_cost:.4f}")
 
-            current_probs, best_plan = self.update_dist(current_probs, a_self, total_costs, self.num_elites)
+            # Update distribution
+            current_probs, _ = self.update_dist(
+                current_probs, a_self, total_costs, self.num_elites, i
+            )
 
         return best_plan
 
     def evolve(self, z_t, z_goal, h0_other, a_self, a_other):
+        """Roll out trajectories and compute costs."""
         S = self.num_samples
         
-        # Ensure z_goal is ready for broadcasting: [1, C, H, W]
-        # We strip the last 2 channels if your goal doesn't include the pos_t expansion
-        z_goal_target = z_goal 
-
+        # Initialize states
         curr_z_self = repeat(z_t, 'b c h w -> (b s) c h w', s=S)
         curr_h_other = repeat(h0_other, 'b t d -> (s b t) d', s=S)
         
-        # Initial imagined states for the other agent
-        curr_z_other = rearrange(self.obs_pred(curr_h_other.unsqueeze(1)), "s t c h w -> (s t) c h w")
+        curr_z_other = rearrange(
+            self.obs_pred(curr_h_other.unsqueeze(1)), 
+            "s t c h w -> (s t) c h w"
+        )
         curr_h_self = self.msg_pred(curr_z_self[:, :-2].unsqueeze(1)).squeeze(1)
 
         total_cost = torch.zeros(S, device=self.device)
         
+        # Roll out trajectories
         for t in range(self.horizon):
-            a_self_t = a_self[:, t].unsqueeze(1) # [S, 1]
-            a_other_t = a_other[:, t].unsqueeze(1) # [S, 1]
+            a_self_t = a_self[:, t].unsqueeze(1)
+            a_other_t = a_other[:, t].unsqueeze(1)
             
             # Forward dynamics
-            next_z_self = self.model.dynamics.forward(current_state=curr_z_self, curr_action=a_self_t, curr_msg=curr_h_other)
-            next_z_other = self.model.dynamics.forward(current_state=curr_z_other, curr_action=a_other_t, curr_msg=curr_h_self)
+            next_z_self = self.model.dynamics.forward(
+                current_state=curr_z_self, 
+                curr_action=a_self_t, 
+                curr_msg=curr_h_other
+            )
+            next_z_other = self.model.dynamics.forward(
+                current_state=curr_z_other, 
+                curr_action=a_other_t, 
+                curr_msg=curr_h_self
+            )
 
-            # Predict next messages
+            # Update messages
             curr_h_self = self.msg_pred(next_z_self[:, :-2].unsqueeze(1)).squeeze(1)
             curr_h_other = self.msg_pred(next_z_other[:, :-2].unsqueeze(1)).squeeze(1)
 
-            # --- CRITICAL: Cost calculation ---
-            # Compare only the latent state (excluding position channels if necessary)
-            # next_z_self[:, :-2] is [S, 16, 15, 15]
-            # z_goal_target is [1, 16, 15, 15]
-            diff = next_z_self[:, :-2] - z_goal_target
+            # Compute step cost (MSE to goal)
+            diff = next_z_self[:, :-2] - z_goal
+            step_cost = diff.pow(2).mean(dim=(1, 2, 3))
             
-            # Step-wise cost (MSE)
-            total_cost += diff.pow(2).mean(dim=(1, 2, 3))
+            # Weight final timestep more heavily
+            weight = 2.0 if t == self.horizon - 1 else 1.0
+            total_cost += weight * step_cost
 
             curr_z_self, curr_z_other = next_z_self, next_z_other
 

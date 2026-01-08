@@ -46,10 +46,7 @@ def preprocessor(env, obs, pos=True, get_msg=True):
 # %% ../../nbs/10b_evaluators.planning_eval.ipynb 5
 class PlanEvaluator:
     "Evaluator for planning performance using the Cross-Entropy Method (CEM) for optimization of discrete action sequences."
-    def __init__(self, model, msg_enc, msg_pred, planner, agents= ['agent_0', 'agent_1'], device='cpu'):
-        self.model = model
-        self.msg_enc = msg_enc
-        self.msg_pred = msg_pred
+    def __init__(self, planner, agents= ['agent_0', 'agent_1'], device='cpu'):
         self.agents = agents
         self.device = device
         self.planners = {agent: planner for agent in agents}

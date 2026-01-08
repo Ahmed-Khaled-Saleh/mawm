@@ -23,6 +23,7 @@ __pycache__/
 *.so
 *.pth
 *.csv
+*.pt
 # Distribution / packaging
 .Python
 env/
