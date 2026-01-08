@@ -16,7 +16,7 @@ env:
 
 data:
   data_dir: /kaggle/input/marlgridv3/MarlGridV3/
-  batch_size: 32  
+  batch_size: 16  
   seq_len: 20
   V: 4
   obs_key: pov
