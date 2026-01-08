@@ -42,4 +42,8 @@ obs_pred.load_state_dict(ckpt['obs_predictor'])
 planner = CEMPlanner(model=model, msg_enc= msg_encoder, msg_pred=msg_pred, obs_pred=obs_pred)
 
 evaluator = PlanEvaluator(planner)
-evaluator.eval_all_agents(env, preprocessor, negotiation_rounds=3)
+lst_intents = evaluator.eval_all_agents(env, preprocessor, negotiation_rounds=3)
+
+import pickle
+with open("plan_intents.pkl", "wb") as f:
+    pickle.dump(lst_intents, f)

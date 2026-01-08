@@ -61,6 +61,7 @@ def eval_all_agents(self: PlanEvaluator, env, preprocessor=preprocessor, negotia
 
     # 1. Initialize "Intents" (The Draft Plans)
     # At t=0, we start with zeros (staying still)
+    lst_intents = []
     intents = {agent: torch.zeros(horizon, dtype=torch.long) for agent in agents}
 
     while step < 100:
@@ -88,6 +89,7 @@ def eval_all_agents(self: PlanEvaluator, env, preprocessor=preprocessor, negotia
             intents = new_intents
 
         
+        lst_intents.append(intents.copy())
         # After negotiation rounds, take the FIRST action of the final best plan
         actions = {agent: intents[agent][0] for agent in agents}
         actions = {agent: np.int64(actions[agent].item()) for agent in agents}
@@ -104,4 +106,4 @@ def eval_all_agents(self: PlanEvaluator, env, preprocessor=preprocessor, negotia
         step += 1
         
     env.close()
-    return intents # Returning the final sequences
+    return lst_intents # Returning the final sequences
