@@ -65,7 +65,7 @@ class WMTrainer(Trainer):
 
 # %% ../../nbs/05a_trainer.wm.ipynb 6
 @patch
-def criterion(self: WMTrainer, global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat):
+def criterion(self: WMTrainer, global_step, Z0, Z, h, mask_t, mask):
 
     flat_encodings = flatten_conv_output(Z0) # [T, B, c`, h`, w`] => [T, B, d]
     sigreg_img = self.disSigReg(flat_encodings[:1], global_step= global_step)
@@ -81,22 +81,22 @@ def criterion(self: WMTrainer, global_step, Z0, Z, h, h_hat, mask_t, mask, z_sen
     else:
         sim_loss_t = torch.zeros([1], device=self.device)
 
-    z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
-    z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
+    # z_sender_flat = flatten_conv_output(z_sender)  # [B, T, c`, h`, w`] => [B, T,d]
+    # z_sender_hat = flatten_conv_output(z_sender_hat)  # [B, T, d]
 
-    z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
-    z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+    # z_pred_loss = (z_sender_flat - z_sender_hat).square().mean(dim= -1)  # [B, T, d] => [B, T]
+    # z_pred_loss = (z_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
 
-    h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
-    h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
+    # h_pred_loss = (h - h_hat).square().mean(dim= -1)  # [B, T, dim=32] => [B, T]
+    # h_pred_loss = (h_pred_loss * mask).sum() / mask.sum().clamp_min(1) 
 
     return {
         'sigreg_img': sigreg_img,
         'sigreg_msg': sigreg_msg,
         'sim_loss': sim_loss,
         'sim_loss_t': sim_loss_t,
-        'z_pred_loss': z_pred_loss,
-        'h_pred_loss': h_pred_loss
+        # 'z_pred_loss': z_pred_loss,
+        # 'h_pred_loss': h_pred_loss
     }
             
 
@@ -154,28 +154,35 @@ def train_epoch(self: WMTrainer, epoch):
             else:
                 z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
                 
-            z_sender_hat = self.obs_predictor(h) # [B, T, d=32] => [B, T, C, H, W]
-            h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
+            # z_sender_hat = self.obs_predictor(h) # [B, T, d=32] => [B, T, C, H, W]
+            # h_hat = self.msg_predictor(z_sender[:, :, :-2]) # [B, T, d] => [B, T, dim=32]
             
-            losses = self.criterion(global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
+            # losses = self.criterion(global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat)
+            losses = self.criterion(global_step, Z0, Z, h, mask_t, mask)
+
 
             self.writer.write({
                 f'{agent_id}/train/sigreg_img': losses['sigreg_img'].item(),
                 f'{agent_id}/train/sigreg_msg': losses['sigreg_msg'].item(),
                 f'{agent_id}/train/sim_loss': losses['sim_loss'].item(),
                 f'{agent_id}/train/sim_loss_t': losses['sim_loss_t'].item(),
-                f'{agent_id}/train/z_pred_loss': losses['z_pred_loss'].item(),
-                f'{agent_id}/train/h_pred_loss': losses['h_pred_loss'].item(),
+                # f'{agent_id}/train/z_pred_loss': losses['z_pred_loss'].item(),
+                # f'{agent_id}/train/h_pred_loss': losses['h_pred_loss'].item(),
             })
             
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
-            jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
-            jepa_2_loss = (1 - self.lambda_) * losses['z_pred_loss'] + self.lambda_ * losses['sigreg_msg']
-            jepa_3_loss = self.W_H_PRED * losses['h_pred_loss']
-            self.logger.info(f"JEPA Losses: jepa_1_loss: {jepa_1_loss.item():.4f}, jepa_2_loss: {jepa_2_loss.item():.4f}, jepa_3_loss: {jepa_3_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
+            # jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
+            # jepa_2_loss = (1 - self.lambda_) * losses['z_pred_loss'] + self.lambda_ * losses['sigreg_msg']
+            # jepa_3_loss = self.W_H_PRED * losses['h_pred_loss']
 
-            agent_loss = jepa_1_loss + jepa_2_loss + jepa_3_loss + self.W_SIM_T * losses['sim_loss_t']
+            jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
+            jepa_2_loss = self.lambda_ * losses['sigreg_msg']
+            # jepa_3_loss = self.W_H_PRED * losses['h_pred_loss']
+
+            self.logger.info(f"JEPA Losses: jepa_1_loss: {jepa_1_loss.item():.4f}, jepa_2_loss: {jepa_2_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
+
+            agent_loss = jepa_1_loss + jepa_2_loss + self.W_SIM_T * losses['sim_loss_t']
             self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
             
             # agent_loss = self.lambda_ * z_pred_loss + (1 - self.lambda_) * h_pred_loss + vicreg_loss['total_loss']
