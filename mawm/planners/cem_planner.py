@@ -140,7 +140,7 @@ def plan(self: DiscreteCEMPlanner, obs_0, obs_g, actions=None):
     # Return the most likely action sequence
     return torch.argmax(probs, dim=-1), np.full(n_evals, np.inf)
 
-# %% ../../nbs/10a_planners.cem_planner.ipynb 29
+# %% ../../nbs/10a_planners.cem_planner.ipynb 28
 import torch
 from einops import repeat, rearrange
 from ..models.utils import Expander2D
@@ -192,6 +192,12 @@ class CEMPlanner:
 
     @torch.no_grad()
     def plan(self, o_t, pos_t, o_g, m_other, other_actions):
+
+        o_t = o_t.to(self.device)
+        o_g = o_g.to(self.device)
+        pos_t = pos_t.to(self.device)
+        m_other = m_other.to(self.device)
+        other_actions = other_actions.to(self.device)
         # Initialize uniform
         current_probs = torch.full(
             (self.horizon, self.action_dim), 
@@ -279,7 +285,7 @@ class CEMPlanner:
 
 
 
-# %% ../../nbs/10a_planners.cem_planner.ipynb 34
+# %% ../../nbs/10a_planners.cem_planner.ipynb 33
 # ============================================
 # ALTERNATIVE: Boltzmann/Softmax CEM
 # ============================================
@@ -333,6 +339,13 @@ class CEMPlannerBoltzmann:
     
     @torch.no_grad()
     def plan(self, o_t, pos_t, o_g, m_other, other_actions):
+
+        o_t = o_t.to(self.device)
+        o_g = o_g.to(self.device)
+        pos_t = pos_t.to(self.device)
+        m_other = m_other.to(self.device)
+        other_actions = other_actions.to(self.device)
+        
         current_probs = torch.full(
             (self.horizon, self.action_dim), 
             1.0/self.action_dim, 

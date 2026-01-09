@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['ENCODER_LAYERS_CONFIG', 'PassThrough', 'MLPNet', 'MeNet5', 'ResizeConv2d', 'Canonical', 'MLPEncoder', 'ObposEncoder1',
-           'ObposEncoder2', 'MeNet6', 'build_backbone', 'SemanticEncoder']
+           'ObposEncoder2', 'MeNet6', 'build_backbone', 'SemanticEncoder', 'MeDecoder6']
 
 # %% ../../../nbs/02d_models.vision.ipynb 3
 import numpy as np
@@ -527,3 +527,56 @@ class SemanticEncoder(nn.Module):
         x = rearrange(x, '(b t) d -> b t d', b= B)
         return x
 
+
+# %% ../../../nbs/02d_models.vision.ipynb 30
+import torch
+import torch.nn as nn
+
+class MeDecoder6(nn.Module):
+    def __init__(self, latent_channels=16, output_channels=3):
+        super().__init__()
+        
+        # We reverse the order of the encoder layers
+        self.layers = nn.Sequential(
+            # 1. Start from 16 channels (1x1 conv to expand channels)
+            nn.Conv2d(latent_channels, 32, kernel_size=1),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(),
+
+            # 2. Reverse the 3x3 padding=1 layer (spatial size stays same)
+            nn.ConvTranspose2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(),
+
+            # 3. Reverse the 3x3 layer (no padding in encoder)
+            # Note: output_padding might be needed depending on exact input size
+            nn.ConvTranspose2d(32, 32, kernel_size=3, stride=1),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(),
+
+            # 4. Reverse the Strided 5x5 Conv (The Upsampling Step)
+            # Stride 2 doubles the resolution
+            nn.ConvTranspose2d(32, 16, kernel_size=5, stride=2),
+            nn.GroupNorm(4, 16),
+            nn.ReLU(),
+
+            # 5. Final Upscale/Refine to reach original image size
+            nn.ConvTranspose2d(16, output_channels, kernel_size=5, stride=1),
+            # Sigmoid or Tanh depending on your image normalization (0-1 or -1 to 1)
+            nn.Sigmoid() 
+        )
+
+    def forward(self, z):
+        # Handle [T, BS, C, H, W] or [BS, C, H, W]
+        time_dim = False
+        if z.dim() == 5:
+            time_dim = True
+            T, BS, C, H, W = z.shape
+            z = z.flatten(0, 1)
+
+        out = self.layers(z)
+
+        if time_dim:
+            out = out.reshape(T, BS, *out.shape[1:])
+        
+        return out

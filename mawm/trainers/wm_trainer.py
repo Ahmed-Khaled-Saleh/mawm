@@ -67,7 +67,8 @@ class WMTrainer(Trainer):
 @patch
 def criterion(self: WMTrainer, global_step, Z0, Z, h, h_hat, mask_t, mask, z_sender, z_sender_hat):
 
-    sigreg_img = self.disSigReg(Z0, global_step= global_step)
+    flat_encodings = flatten_conv_output(Z0) # [T, B, c`, h`, w`] => [T, B, d]
+    sigreg_img = self.disSigReg(flat_encodings[:1], global_step= global_step)
     sigreg_msg = self.disSigReg(h, global_step= global_step)
     transition_mask = mask_t[1:] * mask_t[:-1]
 
