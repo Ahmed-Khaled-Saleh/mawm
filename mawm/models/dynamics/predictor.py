@@ -565,7 +565,7 @@ ConvPredictorConfig = {
     "b": [(18, 32, 5, 1, 2), (32, 32, 5, 1, 2), (32, 16, 5, 1, 2)],
     "c": [(18, 32, 7, 1, 3), (32, 32, 7, 1, 3), (32, 16, 7, 1, 3)],
     "a_propio": [(20, 32, 3, 1, 1), (32, 32, 3, 1, 1), (32, 18, 3, 1, 1)],
-    "d4rl_b_p": [(20, 32, 3, 1, 1), (32, 32, 3, 1, 1), (32, 18, 3, 1, 1)],
+    "d4rl_b_p": [(20, 32, 3, 1, 1), (32, 32, 3, 1, 1), (32, 16, 3, 1, 1)],
     "d4rl_c_p": [(36, 32, 3, 1, 1), (32, 32, 3, 1, 1), (32, 34, 3, 1, 1)],
 }
 
@@ -574,7 +574,7 @@ class ConvPredictor(nn.Module):
         self,
         config,
         repr_dim,
-        action_dim=1,  # action + z_dim
+        action_dim=5,
         msg_dim=32,
         pred_pos_dim=0,
         pred_obs_dim=0,
@@ -593,13 +593,17 @@ class ConvPredictor(nn.Module):
 
         self.msg_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
 
-
-
         # Define convolutional layers
         layers = []
         layers_config = ConvPredictorConfig[self.predictor_subclass]
         in_channels, out_channels, k, s, p = layers_config[0]
-        actual_in_channels = repr_dim[0] + self.action_dim + self.msg_dim
+
+        if self.config.action_encoder_arch != "id":
+            action_inp_dim = int(self.config.action_encoder_arch.split("-")[-1])
+        else:
+            action_inp_dim = self.action_dim
+
+        actual_in_channels = repr_dim[0] + action_inp_dim + self.msg_dim
         for i in range(len(layers_config) - 1):
             in_channels, out_channels, kernel_size, stride, padding = layers_config[i]
 
@@ -638,8 +642,6 @@ class ConvPredictor(nn.Module):
             # self.action_dim = layer_dims[-1]
         else:
             self.action_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
-
-        # self.msg_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
 
     
 

@@ -500,7 +500,7 @@ def build_backbone(
 
     return backbone
 
-# %% ../../../nbs/02d_models.vision.ipynb 26
+# %% ../../../nbs/02d_models.vision.ipynb 27
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -528,7 +528,7 @@ class SemanticEncoder(nn.Module):
         return x
 
 
-# %% ../../../nbs/02d_models.vision.ipynb 30
+# %% ../../../nbs/02d_models.vision.ipynb 35
 import torch
 import torch.nn as nn
 

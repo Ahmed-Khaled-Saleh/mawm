@@ -236,7 +236,7 @@ def plot_grid(img_tensor, msg_tensor):
     
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 33
+# %% ../../nbs/01b_data.utils.ipynb 35
 import torch
 
 from .loaders import MarlGridDataset
@@ -274,7 +274,7 @@ def init_data(cfg):
     return train_loader, val_loader
 
 
-# %% ../../nbs/01b_data.utils.ipynb 44
+# %% ../../nbs/01b_data.utils.ipynb 46
 import matplotlib.pyplot as plt
 import numpy as np
 import torchvision
@@ -309,7 +309,7 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
     plt.savefig("pdf.pdf", bbox_inches='tight')
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 47
+# %% ../../nbs/01b_data.utils.ipynb 49
 import torch
 def init_data_dist(
         cfg,

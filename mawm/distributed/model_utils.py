@@ -25,10 +25,10 @@ def init_models_dist(
 ):
     
     
-    jepa = JEPA(cfg.model, input_dim=(3, 42, 42), action_dim= 1)
+    jepa = JEPA(cfg.model, input_dim=(3, 42, 42), action_dim= 5)
     msg_enc = SemanticEncoder(num_primitives= 5, latent_dim = 32)
-    msg_pred = MsgPred(h_dim=32)
-    obs_pred = ObsPred(h_dim=32)
+    msg_pred = MsgPred(h_dim=32, in_channels=16)
+    obs_pred = ObsPred(h_dim=32, out_channels=16)
 
     jepa.to(device)
     msg_enc.to(device)

@@ -42,7 +42,7 @@ class JEPA(nn.Module):
         cfg,
         input_dim = (42, 42, 3),
         repr_dim = None,
-        action_dim = 2,
+        action_dim = 5,
     ):
         super().__init__()
 
@@ -86,7 +86,7 @@ def forward(
 
     return z0, Z
 
-# %% ../../nbs/02h_models.jepa.ipynb 17
+# %% ../../nbs/02h_models.jepa.ipynb 18
 @patch
 def update_ema(self: JEPA):
     if self.config.momentum > 0:
