@@ -133,7 +133,7 @@ def train_epoch(self: WMTrainer, epoch):
 
             for other_agent in self.agents:
                 if other_agent != agent_id:
-                    obs_sender, pos_sender, msg, msg_target, _,_ = data[other_agent].values()
+                    obs_sender, pos_sender, msg, msg_target, _,_, _ = data[other_agent].values()
 
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
