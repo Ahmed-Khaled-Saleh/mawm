@@ -176,23 +176,25 @@ def train_epoch(self: WMTrainer, epoch):
             self.logger.info(f"JEPA Losses: sender_jepa_loss: {sender_jepa_loss.item():.4f}, rec_jepa_loss: {rec_jepa_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
 
             agent_loss = sender_jepa_loss + rec_jepa_loss + smothness_loss + comm_mod_loss
+            scaled_loss = agent_loss / len(self.agents)
+            scaled_loss.backward()
             self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
             
-            batch_loss += agent_loss
+            batch_loss += scaled_loss
 
             num_valid = mask.sum().item()
             total_running_loss += agent_loss.item() * num_valid
             total_valid_steps += num_valid
             
-        loss = batch_loss / len(self.agents)
-        loss.backward()
+        loss = batch_loss
+        # loss.backward()
         self.optimizer.step()
 
         if batch_idx % 20 == 0:
             self.logger.info(f'Train Epoch: {epoch} [{batch_idx * len(obs)}/{len(self.train_loader.dataset)} '
                   f'({100. * batch_idx / len(self.train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
-    final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents)
+    final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents) if total_valid_steps > 0 else 0.0
     self.logger.info(f'====> Epoch: {epoch} Average loss: {final_epoch_loss:.4f}')
 
     return final_epoch_loss
