@@ -168,8 +168,8 @@ def train_epoch(self: WMTrainer, epoch):
                 
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
-            sender_jepa_loss = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
-            rec_jepa_loss = (1 - self.lambda_) * losses['sim_loss_dynamics'] + self.lambda_ * losses['sigreg_img']
+            sender_jepa_loss = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + 25.0 * losses['inv_loss_sender']
+            rec_jepa_loss = self.lambda_ * losses['sim_loss_dynamics'] + 5.0 * losses['sigreg_img']
             comm_mod_loss = self.W_H_PRED * losses['msg_pred_loss']
             smothness_loss = self.W_SIM_T * losses['sim_loss_t']
 
