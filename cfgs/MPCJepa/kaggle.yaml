@@ -94,3 +94,6 @@ optimizer:
     name: cosine
     T_max: 500
     eta_min: 1e-05
+    
+trainer:
+  class_name: findgoal_trainer
