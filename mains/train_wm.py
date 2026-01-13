@@ -48,7 +48,7 @@ except:
 cfg.now = args.timestamp 
 
 def seed_all():
-    _GLOBAL_SEED = 0
+    _GLOBAL_SEED = np.random.randint(0, 10000)
     random.seed(_GLOBAL_SEED)
     np.random.seed(_GLOBAL_SEED)
     torch.manual_seed(_GLOBAL_SEED)

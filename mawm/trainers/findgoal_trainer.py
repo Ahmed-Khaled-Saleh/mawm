@@ -66,7 +66,7 @@ class WMTrainer:
 def criterion(self: WMTrainer, global_step, Z0, Z, msg_target, msg_hat, proj_h, proj_z, mask_t, mask):
 
     flat_encodings = flatten_conv_output(Z0) # [T, B, c`, h`, w`] => [T, B, d]
-    sigreg_img_enc = self.disSigReg(flat_encodings[:1], global_step= global_step)
+    sigreg_img = self.disSigReg(flat_encodings[:1], global_step= global_step)
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (Z0[1:] - Z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
@@ -80,16 +80,16 @@ def criterion(self: WMTrainer, global_step, Z0, Z, msg_target, msg_hat, proj_h, 
 
     msg_pred_loss = self.cross_entropy(msg_hat, msg_target)
 
-    sigreg_msg_proj = self.disSigReg(proj_h, global_step= global_step)
-    sigreg_obs_proj = self.disSigReg(proj_z, global_step= global_step)
+    sigreg_msg = self.disSigReg(proj_h, global_step= global_step)
+    sigreg_obs = self.disSigReg(proj_z, global_step= global_step)
 
     inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
     inv_loss_sender = (inv_loss_sender * mask).sum() / mask.sum().clamp_min(1) 
 
     return {
-        'sigreg_img_enc': sigreg_img_enc,
-        'sigreg_msg_proj': sigreg_msg_proj,
-        'sigreg_obs_proj': sigreg_obs_proj,
+        'sigreg_img': sigreg_img,
+        'sigreg_msg': sigreg_msg,
+        'sigreg_obs': sigreg_obs,
         'sim_loss_dynamics': sim_loss,
         'sim_loss_t': sim_loss_t,
         'inv_loss_sender': inv_loss_sender,
@@ -115,7 +115,7 @@ def train_epoch(self: WMTrainer, epoch):
         batch_loss = 0
 
         for agent_id in self.agents:
-            obs, _, _, _, act, _, dones = data[agent_id].values()
+            obs, pos, _, _, act, _, dones = data[agent_id].values()
             mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
             mask = rearrange(mask, 'b t d-> b (t d)', d=1)
             mask_t = rearrange(mask, 'b t -> t b')
@@ -126,50 +126,56 @@ def train_epoch(self: WMTrainer, epoch):
                 continue 
 
             obs = obs.to(self.device)
+            pos = pos.to(self.device)
             act = act.to(self.device)
 
             self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {act.device}")
 
             for other_agent in self.agents:
                 if other_agent != agent_id:
-                    obs_sender, _, msg, msg_target, _,_ = data[other_agent].values()
+                    obs_sender, pos_sender, msg, msg_target, _,_ = data[other_agent].values()
 
                     obs_sender = obs_sender.to(self.device)
+                    pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
                     msg_target = msg_target.to(self.device)
                     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
             
             h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
-            Z0, Z = self.model(x= obs, pos= None, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+            Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
             
             if hasattr(self.model, 'module'):
-                z_sender = self.model.module.backbone(obs_sender, position = None)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
             else:
-                z_sender = self.model.backbone(obs_sender, position = None)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
                 
             proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
             msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
             
             losses = self.criterion(global_step, Z0, Z, msg_target, msg_hat, proj_h, proj_z, mask_t, mask)
-
+          
             if self.verbose:
                 self.writer.write({
                     f'{agent_id}/train/sigreg_img': losses['sigreg_img'].item(),
                     f'{agent_id}/train/sigreg_msg': losses['sigreg_msg'].item(),
-                    f'{agent_id}/train/sim_loss': losses['sim_loss'].item(),
+                    f'{agent_id}/train/sigreg_obs': losses['sigreg_obs'].item(),
+                    f'{agent_id}/train/sim_loss': losses['sim_loss_dynamics'].item(),
                     f'{agent_id}/train/sim_loss_t': losses['sim_loss_t'].item(),
-                    f'{agent_id}/train/h_pred_loss': losses['h_pred_loss'].item(),
+                    f'{agent_id}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
+                    f'{agent_id}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
                 })
                 
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
-            jepa_1_loss = (1 - self.lambda_) * losses['sim_loss'] + self.lambda_ * losses['sigreg_img']
-            jepa_2_loss = (1 - self.lambda_) * losses['h_pred_loss'] + self.lambda_ * losses['sigreg_msg']
+            sender_jepa_loss = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
+            rec_jepa_loss = (1 - self.lambda_) * losses['sim_loss_dynamics'] + self.lambda_ * losses['sigreg_img']
+            comm_mod_loss = self.W_H_PRED * losses['msg_pred_loss']
+            smothness_loss = self.W_SIM_T * losses['sim_loss_t']
 
-            self.logger.info(f"JEPA Losses: jepa_1_loss: {jepa_1_loss.item():.4f}, jepa_2_loss: {jepa_2_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
+            self.logger.info(f"JEPA Losses: sender_jepa_loss: {sender_jepa_loss.item():.4f}, rec_jepa_loss: {rec_jepa_loss.item():.4f}, sim_loss_t: {losses['sim_loss_t'].item():.4f}")
 
-            agent_loss = jepa_1_loss + jepa_2_loss + self.W_SIM_T * losses['sim_loss_t']
+            agent_loss = sender_jepa_loss + rec_jepa_loss + smothness_loss + comm_mod_loss
             self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
             
             batch_loss += agent_loss
@@ -186,7 +192,6 @@ def train_epoch(self: WMTrainer, epoch):
             self.logger.info(f'Train Epoch: {epoch} [{batch_idx * len(obs)}/{len(self.train_loader.dataset)} '
                   f'({100. * batch_idx / len(self.train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
-    # divide by len(self.agents) to match the 'loss' scale used in training
     final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents)
     self.logger.info(f'====> Epoch: {epoch} Average loss: {final_epoch_loss:.4f}')
 

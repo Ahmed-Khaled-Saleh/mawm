@@ -208,4 +208,3 @@ class MeNet6(nn.Module):
             return z
         return z
     
-
