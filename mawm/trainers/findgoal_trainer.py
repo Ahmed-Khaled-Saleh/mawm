@@ -84,7 +84,7 @@ def criterion(self: WMTrainer, global_step, Z0, Z, msg_target, msg_hat, proj_h, 
     sigreg_obs = self.disSigReg(proj_z, global_step= global_step)
 
     inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
-    inv_loss_sender = (inv_loss_sender * mask).sum() / mask.sum().clamp_min(1) 
+    inv_loss_sender = (inv_loss_sender * transition_mask).sum() / transition_mask.sum().clamp_min(1) 
 
     return {
         'sigreg_img': sigreg_img,
