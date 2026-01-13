@@ -71,8 +71,13 @@ class CommModule(nn.Module):
         )
 
     def forward(self, x):
+        if x.dim() == 5:
+            # Reshape from (batch, time, channels, height, width) to (batch * time, channels, height, width)
+            b, t, c, h, w = x.shape
+            x = x.view(b * t, c, h, w)
         # Output shape: (batch, 5, 7, 7)
         x =  self.network(x)
+        x = rearrange(x, '(b t) c h w -> b t c h w', b= b, t= t)
         return x
 
 
