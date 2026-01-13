@@ -141,7 +141,7 @@ def train_epoch(self: WMTrainer, epoch):
                     msg_target = msg_target.to(self.device)
                     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
             
-            h = self.msg_encoder(msg) # [B, T, C, H, W] => [B, T, dim=32]
+            h = self.msg_enc(msg) # [B, T, C, H, W] => [B, T, dim=32]
 
             Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
             
