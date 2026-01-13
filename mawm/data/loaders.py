@@ -69,7 +69,8 @@ class MarlGridDataset(torch.utils.data.Dataset):
                     {
                     "obs": torch.stack([self.transform(frame) for frame in data[f"{ag}_obs"][seq]]),
                     "pos": torch.from_numpy(data[f"{ag}_selfpos"][seq]),
-                    "msg": torch.stack([self.msg_tf((frame, ag, done)) for frame, done in zip(data[f"{ag}_obs"][seq], data[f"{ag}_done"][seq])]),
+                    "msg": torch.stack([self.msg_tf((frame, ag, done, True)) for frame, done in zip(data[f"{ag}_obs"][seq], data[f"{ag}_done"][seq])]),
+                    "msg_target": torch.stack([self.msg_tf((frame, ag, done, False)) for frame, done in zip(data[f"{ag}_obs"][seq], data[f"{ag}_done"][seq])]),                    
                     "act": F.one_hot(torch.from_numpy(np.asarray(data[f"{ag}_act"][seq])), num_classes=5).float(),
                     "next_obs": torch.stack([self.transform(frame) for frame in data[f"{ag}_next_obs"][seq]]),
                     "done": torch.stack([torch.from_numpy(data[f"{ag}_done"][seq])], dim=1),

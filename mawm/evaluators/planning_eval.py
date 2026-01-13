@@ -30,7 +30,7 @@ def preprocessor(env, obs, pos=True, get_msg=True):
         if pos:
             positions[agent_id] = torch.from_numpy(obs[agent_id]['selfpos'])
         if get_msg:
-            m = msg_tf((obs[agent_id]['pov'], agent_id, False))
+            m = msg_tf((obs[agent_id]['pov'], agent_id, False, False))
             messages[agent_id] = m
 
     

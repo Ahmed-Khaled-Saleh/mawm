@@ -40,11 +40,12 @@ model:
     backbone_width_factor: 2
     input_dim: 4
     channels: 3
-    position_dim: 0
-    position_encoder_arch: 'id'
+    position_dim: 2
+    position_encoder_arch: "2-8-16"
   predictor:
+    action_dim: 5
     residual: true
-    action_encoder_arch: "5-16-32" #'id'
+    action_encoder_arch: "5-32-64-32" #'id'
     arch: ConvPredictor
     predictor_subclass: d4rl_b_p
     rnn_converter_arch: ''

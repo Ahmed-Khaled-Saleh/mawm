@@ -37,7 +37,7 @@ class SIGReg(torch.nn.Module):
         return statistic.mean()
 
 
-# %% ../../nbs/03c_losses.sigreg.ipynb 8
+# %% ../../nbs/03c_losses.sigreg.ipynb 10
 import torch
 import torch.distributed as dist
 from einops import rearrange
@@ -77,11 +77,11 @@ class SIGRegDistributed(torch.nn.Module):
         
         # 2. Compute Local Empirical Characteristic Function (ECF)
         # x_t shape: [B, M, T] (Batch, Slices, Knots)
-        x_t = (proj @ A).unsqueeze(-1) * self.t
+        x_t = (proj @ A).unsqueeze(-1) * self.t # [7, 16, 256, 17]
         
         # We compute the real and imaginary components locally
-        ecf_real_local = x_t.cos().mean(dim=0) # [M, T]
-        ecf_imag_local = x_t.sin().mean(dim=0) # [M, T]
+        ecf_real_local = x_t.cos().mean(dim=0) # [7, 16, 256, 17] => [16, 256, 17]
+        ecf_imag_local = x_t.sin().mean(dim=0) # [7, 16, 256, 17] => [16, 256, 17]
         
         # 3. Synchronize across all GPUs (All-Reduce AVG)
         # If DDP is initialized, we average the characteristic function across the world
@@ -91,10 +91,11 @@ class SIGRegDistributed(torch.nn.Module):
             world_size = dist.get_world_size()
         else:
             world_size = 1
-            
+
         # 4. Compute Squared Distance to Gaussian CF
         # err = |ecf_global - phi|^2
-        err = (ecf_real_local - self.phi).square() + ecf_imag_local.square()
+        err = (ecf_real_local - self.phi).square() + ecf_imag_local.square()# [16, 256, 17]
+        print(err.shape)
         
         # 5. Integration and Scaling
         # We multiply by the Global Batch Size (N * world_size)

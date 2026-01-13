@@ -61,7 +61,7 @@ PRIMITIVE_TEMPLATES = [
 ]
 PRIM_NAME_TO_IDX = {name: i for i, (name, ar) in enumerate(PRIMITIVE_TEMPLATES)}
 NUM_PRIMS = len(PRIMITIVE_TEMPLATES)
-print(PRIM_NAME_TO_IDX)
+# print(PRIM_NAME_TO_IDX)
 
 # %% ../nbs/00_core.ipynb 7
 # -------------------------

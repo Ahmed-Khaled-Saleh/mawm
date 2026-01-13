@@ -144,7 +144,7 @@ import torch.nn.functional as F
 import torch
 from einops import rearrange
 def generate_msg(inp):
-    img, agent_id, done = inp
+    img, agent_id, done, one_hot = inp
     if not done:
         grid = get_grid_chars(img)
     else:
@@ -154,8 +154,12 @@ def generate_msg(inp):
 
     mapping = {'E': 0, 'W': 1, 'G': 2, 'R': 3, 'B': 4}
     int_grid = np.array([[mapping[char] for char in row] for row in grid])
+    grid = torch.from_numpy(int_grid).long()
     
-    one_hot_msg = F.one_hot(torch.from_numpy(int_grid).long(), num_classes=5) # [7,7,5]
+    if not one_hot:
+        return grid
+    
+    one_hot_msg = F.one_hot(grid, num_classes=5) # [7,7,5]
     one_hot_msg = rearrange(one_hot_msg, 'h w c -> c h w') # [5,7,7]
     
     return one_hot_msg.to(torch.float32)
@@ -236,7 +240,7 @@ def plot_grid(img_tensor, msg_tensor):
     
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 35
+# %% ../../nbs/01b_data.utils.ipynb 34
 import torch
 
 from .loaders import MarlGridDataset
@@ -274,7 +278,7 @@ def init_data(cfg):
     return train_loader, val_loader
 
 
-# %% ../../nbs/01b_data.utils.ipynb 46
+# %% ../../nbs/01b_data.utils.ipynb 45
 import matplotlib.pyplot as plt
 import numpy as np
 import torchvision
@@ -309,7 +313,7 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
     plt.savefig("pdf.pdf", bbox_inches='tight')
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 49
+# %% ../../nbs/01b_data.utils.ipynb 48
 import torch
 def init_data_dist(
         cfg,

@@ -17,3 +17,5 @@ scikit-learn
 matplotlib
 omegaconf
 wandb
+datasets
+h5py

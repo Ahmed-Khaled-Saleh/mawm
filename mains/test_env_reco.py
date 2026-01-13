@@ -16,27 +16,6 @@ class Action:
     left = 2 # Move left 
     up = 3 # Move up 
     done = 4 # Done completing task / Stay 
-    toggle = 5 # Toggle/activate an object 
-    pickup = 6 # Pick up an object 
-    drop = 7 # Drop an object
-
-# action_mapping = {
-#     0: "right",
-#     1: "down",
-#     2: "left",
-#     3: "up",
-#     4: "done",
-#     5: "toggle",
-#     6: "pickup",
-#     7: "drop",  
-#     }
-
-# action_mapping = {
-#     0: "Left",
-#     1: "Right",
-#     2: "Forward",
-#     3: "Done"
-#     }
 action_mapping = {
     0: "Right",
     1: "Down",
