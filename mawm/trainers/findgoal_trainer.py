@@ -78,7 +78,7 @@ def criterion(self: WMTrainer, global_step, Z0, Z, msg_target, msg_hat, proj_h, 
     else:
         sim_loss_t = torch.zeros([1], device=self.device)
 
-    msg_pred_loss = self.cross_entropy(msg_hat, msg_target)
+    msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1))
 
     sigreg_msg = self.disSigReg(proj_h, global_step= global_step)
     sigreg_obs = self.disSigReg(proj_z, global_step= global_step)
