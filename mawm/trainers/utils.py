@@ -26,7 +26,7 @@ def init_trainer(cfg, model, train_loader, sampler, optimizer,
                 device, scheduler, writer, verbose, logger, 
                 earlystopping= None):
     
-    WMTrainer = get_cls(f"mawm.trainers{cfg.trainer.class_name}", "WMTrainer")
+    WMTrainer = get_cls(f"mawm.trainers.{cfg.trainer.class_name}", "WMTrainer")
     trainer = WMTrainer(cfg, model, train_loader, sampler = sampler, optimizer= optimizer,
                         device= device, earlystopping= earlystopping, scheduler= scheduler,
                         writer= writer, verbose= verbose, logger = logger)
