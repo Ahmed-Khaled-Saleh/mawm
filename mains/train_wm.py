@@ -58,6 +58,7 @@ def main(cfg):
 
     dist.init_process_group(backend='nccl')
     seed_all()
+    torch.autograd.set_detect_anomaly(True)
     
     local_rank = int(os.environ['LOCAL_RANK'])
     torch.cuda.set_device(local_rank)
