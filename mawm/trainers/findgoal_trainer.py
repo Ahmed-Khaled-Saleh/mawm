@@ -103,6 +103,9 @@ from einops import rearrange
 @patch
 def train_epoch(self: WMTrainer, epoch):
     self.model.train()
+    self.msg_enc.train()
+    self.comm_module.train()
+    self.proj.train()
     
     total_running_loss = 0.0
     total_valid_steps = 0
