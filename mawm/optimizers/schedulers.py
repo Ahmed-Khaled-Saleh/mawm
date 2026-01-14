@@ -42,27 +42,63 @@ class Scheduler:
         else:
             self.batch_steps = batch_steps
 
+    # def adjust_learning_rate(self, step: int):
+    #     if self.schedule == "constant":
+    #         return self.base_lr
+    #     else:
+    #         max_steps = self.epochs * self.batch_steps
+    #         warmup_steps = int(0.10 * max_steps)
+    #         for param_group in self.optimizer.param_groups:
+    #             base_lr = (
+    #                 param_group["base_lr"] if "base_lr" in param_group else self.base_lr
+    #             )
+    #             base_lr = base_lr * self.batch_size / 256
+    #             if step < warmup_steps:
+    #                 lr = base_lr * step / warmup_steps
+    #             else:
+    #                 step -= warmup_steps
+    #                 max_steps -= warmup_steps
+    #                 q = 0.5 * (1 + math.cos(math.pi * step / max_steps))
+    #                 end_lr = base_lr * 0.001
+    #                 lr = base_lr * q + end_lr * (1 - q)
+    #             param_group["lr"] = lr
+    #         return lr
+
     def adjust_learning_rate(self, step: int):
         if self.schedule == "constant":
             return self.base_lr
-        else:
-            max_steps = self.epochs * self.batch_steps
-            warmup_steps = int(0.10 * max_steps)
-            for param_group in self.optimizer.param_groups:
-                base_lr = (
-                    param_group["base_lr"] if "base_lr" in param_group else self.base_lr
-                )
-                base_lr = base_lr * self.batch_size / 256
-                if step < warmup_steps:
-                    lr = base_lr * step / warmup_steps
+        
+        # 1. Calculate totals outside the loop
+        total_max_steps = self.epochs * self.batch_steps
+        warmup_steps = int(0.10 * total_max_steps)
+        
+        # 2. Prevent division by zero if total_max_steps is very small
+        if total_max_steps == warmup_steps:
+            warmup_steps = max(1, warmup_steps - 1)
+
+        for param_group in self.optimizer.param_groups:
+            base_lr = param_group.get("base_lr", self.base_lr)
+            # Scaling LR by batch size (Linear Scaling Rule)
+            base_lr = base_lr * self.batch_size / 256
+            
+            if step < warmup_steps:
+                lr = base_lr * step / warmup_steps
+            else:
+                # Use local variables for the decay calculation 
+                # to avoid modifying the outer scope variables
+                current_decay_step = step - warmup_steps
+                decay_period = total_max_steps - warmup_steps
+                
+                # Ensure we don't divide by zero if epochs are too low
+                if decay_period <= 0:
+                    lr = base_lr
                 else:
-                    step -= warmup_steps
-                    max_steps -= warmup_steps
-                    q = 0.5 * (1 + math.cos(math.pi * step / max_steps))
+                    q = 0.5 * (1 + math.cos(math.pi * current_decay_step / decay_period))
                     end_lr = base_lr * 0.001
                     lr = base_lr * q + end_lr * (1 - q)
-                param_group["lr"] = lr
-            return lr
+            
+            param_group["lr"] = lr
+        return lr
 
 # %% ../../nbs/04b_optimizers.scheduler.ipynb 14
 import math
