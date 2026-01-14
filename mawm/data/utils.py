@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['base_tf', 'denormalize_tf', 'lejepa_train_tf', 'lejepa_test_tf', 'msg_tf', 'get_graphics_primitives', 'show_grid',
            'get_cell_color', 'get_grid_chars', 'generate_msg', 'MsgTransform', 'debug_channels', 'plot_grid',
-           'init_data', 'show_batch', 'init_data_dist']
+           'get_data_path', 'init_data', 'show_batch', 'init_data_dist']
 
 # %% ../../nbs/01b_data.utils.ipynb 3
 from fastcore import *
@@ -241,23 +241,38 @@ def plot_grid(img_tensor, msg_tensor):
     plt.show()
 
 # %% ../../nbs/01b_data.utils.ipynb 34
+import os
+def get_data_path():
+    paths = {
+        "kaggle": "/kaggle/input/marlgridv3/MarlGridV3/",
+        "puhti": "/scratch/project_2009050/datasets/MarlGridV3/",
+        "mahti": "/scratch/project_2009050/datasets/MarlGridV3/",
+        "triton": "/home/sehadn1/MarlGridV3/",
+        "local": "/home/ahmed//Ahmed-home/1- Projects/Research/Journal 2/Code/mawm/nbs/data_test/"
+    }
+
+    for hostname, path in paths.items():
+        if os.path.exists(path):
+            print(f"Data path found for hostname: {hostname}")
+            return path
+    raise FileNotFoundError("No valid data path found for this hostname.")
+
+
+# %% ../../nbs/01b_data.utils.ipynb 35
 import torch
 
 from .loaders import MarlGridDataset
 def init_data(cfg):
+    cfg.data.data_dir = get_data_path()
     train_ds = MarlGridDataset(
-        data_path = cfg.data.data_dir,
-        num_agents= len(cfg.env.agents),
-        seq_len= cfg.data.seq_len,
+        cfg = cfg,
         train= True,
         transform= base_tf,
         msg_tf= msg_tf
     )
 
     test_ds = MarlGridDataset(
-        data_path = cfg.data.data_dir,
-        num_agents= len(cfg.env.agents),
-        seq_len= cfg.data.seq_len,
+        cfg = cfg,
         train= False,
         transform= base_tf,
         msg_tf= msg_tf
@@ -278,7 +293,7 @@ def init_data(cfg):
     return train_loader, val_loader
 
 
-# %% ../../nbs/01b_data.utils.ipynb 45
+# %% ../../nbs/01b_data.utils.ipynb 46
 import matplotlib.pyplot as plt
 import numpy as np
 import torchvision
@@ -313,17 +328,16 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
     plt.savefig("pdf.pdf", bbox_inches='tight')
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 48
+# %% ../../nbs/01b_data.utils.ipynb 49
 import torch
 def init_data_dist(
         cfg,
         train= True,
         collator=torch.utils.data.default_collate,
 ):
+    cfg.data.data_dir = get_data_path()
     train_ds = MarlGridDataset(
-        data_path = cfg.data.data_dir,
-        num_agents= len(cfg.env.agents),
-        seq_len= cfg.data.seq_len,
+        cfg= cfg,
         train= train,
         transform= base_tf,
         msg_tf= msg_tf

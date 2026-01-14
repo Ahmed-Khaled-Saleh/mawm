@@ -55,7 +55,7 @@ class WMTrainer:
 
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
-        self.dmpc_dir = os.path.join(self.cfg.log_dir, 'dmpc_marlrid', self.cfg.now)
+        self.dmpc_dir = os.path.join(self.cfg.log_dir, self.cfg.log_subdir, self.cfg.now)
         if not os.path.exists(self.dmpc_dir):
             os.makedirs(self.dmpc_dir , exist_ok=True)
 

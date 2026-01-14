@@ -22,4 +22,4 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun torchrun --standalone --nnodes=1 --nproc_per_node=4 train_wm.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
+srun torchrun --standalone --nnodes=1 --nproc_per_node=4 train_wm.py --config ../cfgs/findgoal/mawm/main/mawm-seq-40.yaml --env_file ../.env --timestamp ${ts}

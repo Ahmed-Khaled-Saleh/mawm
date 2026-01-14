@@ -1,4 +1,4 @@
-project_name: FindGoalJEPA
+project_name: FindGoal-SeqLen
   
 epochs: 300
 save_every_freq: 5
@@ -11,17 +11,18 @@ root_dir: /scratch/project_2009050/
 save_dir : models
 res_dir: results
 log_dir: ./logs
-log_subdir: mawm_main
+log_subdir: mawm_seq_60
 env:
   agents: ['agent_0', 'agent_1']
 
 data:
   data_dir: /scratch/project_2009050/datasets/MarlGridV3/ #/home/sehadn1/MarlGridV3
-  batch_size: 32  
-  seq_len: 20
+  batch_size: 12  
+  seq_len: 60
+  data_size: 1000000
   V: 4
   obs_key: pov
-  name: marlrid
+  name: marlgrid-findgoal
   loader:
     num_workers: 0
     pin_memory: true

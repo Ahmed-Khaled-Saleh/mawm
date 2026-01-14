@@ -1,4 +1,4 @@
-project_name: FindGoalJEPA
+project_name: Main_MAWM_FindGoal
   
 epochs: 300
 save_every_freq: 5
@@ -17,11 +17,12 @@ env:
 
 data:
   data_dir: /scratch/project_2009050/datasets/MarlGridV3/ #/home/sehadn1/MarlGridV3
-  batch_size: 32  
-  seq_len: 20
+  batch_size: 16  
+  seq_len: 40
+  data_size: 0
   V: 4
   obs_key: pov
-  name: marlrid
+  name: marlgrid-findgoal
   loader:
     num_workers: 0
     pin_memory: true
