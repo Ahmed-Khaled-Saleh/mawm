@@ -158,7 +158,148 @@ class CEMPlanner:
 
 
 
-# %% ../../nbs/10a_planners.cem_planner.ipynb 31
+# %% ../../nbs/10a_planners.cem_planner.ipynb 27
+import torch
+from einops import repeat, rearrange
+from ..models.utils import Expander2D
+
+class CEMPlanner:
+    def __init__(self, model, msg_enc, comm_module, 
+                 action_dim=5, horizon=10, num_samples=1000,
+                 num_elites=100, opt_steps=10, device='cpu'):
+        
+        self.model = model
+        self.msg_enc = msg_enc
+        self.comm_module = comm_module
+        self.action_dim = action_dim
+        self.horizon = horizon
+        self.num_samples = num_samples
+        self.num_elites = num_elites
+        self.opt_steps = opt_steps
+        self.device = device
+        
+        # # CRITICAL FIXES for premature convergence
+        # self.alpha = 0.7  # HIGH momentum (was implicit 0, now 0.7)
+        # self.epsilon = 0.1  # MUCH higher smoothing (was 0.01)
+        # self.temperature_schedule = torch.linspace(1.5, 0.8, opt_steps)  # Start hot, cool down
+        
+    def update_dist(self, probs, samples, costs, num_elites, iteration):
+        """Update with momentum and temperature to prevent collapse."""
+        _, elite_indices = torch.topk(-costs, num_elites)
+        elites = samples[elite_indices]
+        
+        # Compute empirical elite distribution
+        empirical_probs = torch.zeros_like(probs)
+        for t in range(self.horizon):
+            counts = torch.bincount(elites[:, t], minlength=self.action_dim).float()
+            empirical_probs[t] = counts / num_elites
+        
+        # CRITICAL FIX 1: Strong momentum (keep 70% of old distribution)
+        new_probs = self.alpha * probs + (1 - self.alpha) * empirical_probs
+        
+        # CRITICAL FIX 2: Higher exploration noise
+        new_probs = (1 - self.epsilon) * new_probs + (self.epsilon / self.action_dim)
+        
+        # CRITICAL FIX 3: Temperature annealing (starts at 1.5, ends at 0.8)
+        temperature = self.temperature_schedule[iteration]
+        new_probs = new_probs ** (1.0 / temperature)
+        new_probs = new_probs / new_probs.sum(dim=1, keepdim=True)
+        
+        return new_probs, elites[0]
+
+    @torch.no_grad()
+    def plan(self, o_t, pos_t, o_g, m_other):
+
+        o_t = o_t.to(self.device)
+        o_g = o_g.to(self.device)
+        pos_t = pos_t.to(self.device)
+        m_other = m_other.to(self.device)
+
+        current_probs = torch.full(
+            (self.horizon, self.action_dim), 
+            1.0/self.action_dim, 
+            device=self.device
+        )
+
+        z_t = self.model.backbone(o_t.unsqueeze(0)) 
+        pos_t_expanded = Expander2D(z_t.shape[-1], z_t.shape[-2])(pos_t.unsqueeze(0))
+        z_t = torch.cat([z_t, pos_t_expanded], dim=1) 
+        z_g = self.model.backbone(o_g.unsqueeze(0))
+        
+        z_goal_target = z_g[:, :-2] if z_g.shape[1] > 16 else z_g
+        
+        h0_other = self.msg_enc(m_other.unsqueeze(0).unsqueeze(1)) 
+
+        best_plan = None
+        best_cost = float('inf')
+        
+        for i in range(self.opt_steps):
+            a_self = torch.multinomial(current_probs, self.num_samples, replacement=True).T 
+            
+            total_costs = self.evolve(z_t, z_goal_target, h0_other, a_self)
+            
+            # Track best
+            if total_costs.min() < best_cost:
+                best_cost = total_costs.min()
+                best_plan = a_self[total_costs.argmin()]
+            
+            # Debug output (keep your existing format)
+            if i == 0 or i == self.opt_steps - 1:
+                print(f"Iter {i}: Cost μ={total_costs.mean():.4f}, "
+                      f"Std={total_costs.std():.4f}, min={total_costs.min():.4f}")
+            
+            current_probs, _ = self.update_dist(current_probs, a_self, total_costs, self.num_elites, i)
+            
+            # OPTIONAL: Debug action diversity
+            if i == self.opt_steps - 1:
+                action_dist = current_probs[0].cpu().numpy()
+                print(f"Final action probs: {action_dist.round(3)}")
+
+        return best_plan
+
+    def evolve(self, z_t, z_goal, h0_other, a_self, a_other):
+        S = self.num_samples
+        z_goal_target = z_goal 
+
+        curr_z_self = repeat(z_t, 'b c h w -> (b s) c h w', s=S)
+        curr_h_other = repeat(h0_other, 'b t d -> (s b t) d', s=S)
+        
+        curr_z_other = rearrange(self.obs_pred(curr_h_other.unsqueeze(1)), "s t c h w -> (s t) c h w")
+        curr_h_self = self.msg_pred(curr_z_self[:, :-2].unsqueeze(1)).squeeze(1)
+
+        total_cost = torch.zeros(S, device=self.device)
+        
+        for t in range(self.horizon):
+            a_self_t = a_self[:, t].unsqueeze(1)
+            a_other_t = a_other[:, t].unsqueeze(1)
+            
+            next_z_self = self.model.dynamics.forward(
+                current_state=curr_z_self, 
+                curr_action=a_self_t, 
+                curr_msg=curr_h_other
+            )
+            next_z_other = self.model.dynamics.forward(
+                current_state=curr_z_other, 
+                curr_action=a_other_t, 
+                curr_msg=curr_h_self
+            )
+
+            curr_h_self = self.msg_pred(next_z_self[:, :-2].unsqueeze(1)).squeeze(1)
+            curr_h_other = self.msg_pred(next_z_other[:, :-2].unsqueeze(1)).squeeze(1)
+
+            diff = next_z_self[:, :-2] - z_goal_target
+            
+            # OPTIONAL FIX: Weight final timestep more if you want goal-seeking behavior
+            weight = 3.0 if t == self.horizon - 1 else 1.0
+            total_cost += weight * diff.pow(2).mean(dim=(1, 2, 3))
+
+            curr_z_self, curr_z_other = next_z_self, next_z_other
+
+        return total_cost
+
+
+
+# %% ../../nbs/10a_planners.cem_planner.ipynb 32
 # ============================================
 # ALTERNATIVE: Boltzmann/Softmax CEM
 # ============================================

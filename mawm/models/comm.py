@@ -37,6 +37,8 @@ class MSGEnc(nn.Module):
         )
         
     def forward(self, x):
+        if x.dim() == 4:
+            x = x.unsqueeze(1)  # Add time dimension if missing
         B, T, C, H, W = x.shape
         x = rearrange(x, 'b t c h w -> (b t) c h w')
         x = self.net(x) # [B*T, latent_dim]
@@ -72,9 +74,13 @@ class CommModule(nn.Module):
 
     def forward(self, x):
         if x.dim() == 5:
+            print("Reshaping input from 5D to 4D for processing.")
             # Reshape from (batch, time, channels, height, width) to (batch * time, channels, height, width)
             b, t, c, h, w = x.shape
             x = x.view(b * t, c, h, w)
+        elif x.dim() == 4:
+            print("Input shape is already 4D, proceeding without reshaping.")
+            b, c, h, w = x.shape
         # Output shape: (batch, 5, 7, 7)
         x =  self.network(x)
         x = rearrange(x, '(b t) c h w -> b t c h w', b= b, t= t)
