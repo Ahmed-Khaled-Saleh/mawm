@@ -130,6 +130,9 @@ import torch.distributed as dist
 def forward(self: SIGRegDistributed, proj, global_step):
     device = proj.device
     
+    if not proj.is_contiguous():
+        proj = proj.contiguous()
+    
     # 1. Sync Projections Across GPUs
     if dist.is_initialized():
         # This makes the gather operation part of the autograd graph
