@@ -13,6 +13,8 @@ import os
 from ..data.utils import base_tf, msg_tf
 import numpy as np
 import torch
+import torch.nn.functional as F
+from einops import repeat
 from ..planners.cem_planner import CEMPlanner
 
 # %% ../../nbs/10b_evaluators.planning_eval.ipynb 4
@@ -49,9 +51,30 @@ def preprocessor(env, obs, pos=True, get_msg=True):
 import torch
 import torch.nn.functional as F
 from einops import repeat
+# class FindGoalPlanner:
+
+#     def __init__(self, model, msg_enc, comm_module, action_dim = 5, horizon= 10, pop_size= 1000, topk= 100, opt_steps= 10, agents= ['agent_0', 'agent_1'], device='cpu'):
+#         self.model = model
+#         self.msg_enc = msg_enc
+#         self.comm_module = comm_module
+#         self.agents = agents
+#         self.device = device
+#         self.action_dim = action_dim
+#         self.pop_size = pop_size
+#         self.topk = topk
+#         self.opt_steps = opt_steps
+#         self.horizon = horizon
+#         self.current_probs = {agent: torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device) \
+#                               for agent in self.agents}
+#         self.loss = torch.nn.MSELoss(reduction='none')
+
+
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 31
 class FindGoalPlanner:
 
-    def __init__(self, model, msg_enc, comm_module, action_dim = 5, horizon= 10, pop_size= 1000, topk= 100, opt_steps= 10, agents= ['agent_0', 'agent_1'], device='cpu'):
+    def __init__(self, model, msg_enc, comm_module, action_dim=5, horizon=10, 
+                 pop_size=1000, topk=100, opt_steps=10, 
+                 agents=['agent_0', 'agent_1'], device='cpu'):
         self.model = model
         self.msg_enc = msg_enc
         self.comm_module = comm_module
@@ -62,210 +85,103 @@ class FindGoalPlanner:
         self.topk = topk
         self.opt_steps = opt_steps
         self.horizon = horizon
-        self.current_probs = {agent: torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device) \
+        self.current_probs = {agent: torch.full((self.horizon, self.action_dim), 
+                                                 1.0/self.action_dim, device=self.device) 
                               for agent in self.agents}
         self.loss = torch.nn.MSELoss(reduction='none')
 
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 9
-@patch
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 32
+@patch    
 def update_dist(self: FindGoalPlanner, costs, samples):
-    
     for agent in self.agents:
-        _, elite_indices = torch.topk(-costs[agent], self.topk)# [topk,]
-        elites = samples[agent][elite_indices] # [topk, horizon, action_dim]
+        _, elite_indices = torch.topk(-costs[agent], self.topk)
+        elites = samples[agent][elite_indices]
         
         new_probs = torch.zeros_like(self.current_probs[agent])
         for t in range(self.horizon):
-            counts = torch.bincount(elites[:, t].argmax(dim=1).int(), minlength=self.action_dim).float()
-            new_probs[t] = counts / counts.sum()
-            # # Add small epsilon to avoid zero probabilities
-            # new_probs[t] = (counts + 1e-6) / (self.topk + 1e-6 * self.action_dim)
+            counts = torch.bincount(elites[:, t].argmax(dim=1).int(), 
+                                    minlength=self.action_dim).float()
+            new_probs[t] = (counts + 1e-6) / (counts.sum() + 1e-6 * self.action_dim)
 
         self.current_probs[agent] = new_probs
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 11
+
+
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 33
 @patch
 def Plan(self: FindGoalPlanner, env, preprocessor):
     obs = env.reset()
     step = 0
     plan = {agent: [] for agent in self.agents}
     
-    # Goal Latent Preparation
-    # Assume preprocessor returns goal images/positions
     _, _, goals, _ = preprocessor(env, obs, pos=True, get_msg=True)
-
     goal_pos = obs["global"]["goal_pos"]
-    position= repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
+    position = repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
     z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
-                                  position=position)
+                                    position=position)
     
-    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size) # [40, c, h, w]
-    z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] for i, agent in enumerate(self.agents)}
+    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size)
+    z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] 
+                for i, agent in enumerate(self.agents)}
     
     while step < 100:
         prev_obs, prev_pos, _, msgs = preprocessor(env, obs, pos=True, get_msg=True)
         
         for agent in self.agents:
-            self.current_probs[agent] = torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device)
+            self.current_probs[agent] = torch.full((self.horizon, self.action_dim), 
+                                                    1.0/self.action_dim, device=self.device)
 
-        # 2. Optimization Loop (CEM)
         for n in range(self.opt_steps):
-            # Sample action sequences for the whole horizon
-            # Shape: (pop_size, horizon)
-            samples = {agent: torch.multinomial(self.current_probs[agent], self.pop_size, replacement=True).T \
-                       for agent in self.agents}
-            # make sampled actions one-hot encoded (to match expected model input)
-            samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float() \
-                       for agent in self.agents}
-            # samples are of shape: [pop_size, horizon, action_dim]
+            samples = {agent: torch.multinomial(self.current_probs[agent], 
+                                                self.pop_size, replacement=True).T 
+                        for agent in self.agents}
+            samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float() 
+                        for agent in self.agents}
             
-            # Initial latent state for this optimization roll-out
-            # Shape: (pop_size, latent_dim...)
-            start_z = self.model.backbone(torch.stack([prev_obs[a] for a in self.agents]).to(self.device),
-                                          position=torch.stack([prev_pos[agent] for agent in self.agents]).to(self.device))
+            start_z = self.model.backbone(
+                torch.stack([prev_obs[a] for a in self.agents]).to(self.device),
+                position=torch.stack([prev_pos[agent] for agent in self.agents]).to(self.device)
+            )
             
-            states = {agent: repeat(start_z[i], 'c h w -> s c h w', s=self.pop_size) \
-                      for i, agent in enumerate(self.agents)}
+            states = {agent: repeat(start_z[i], 'c h w -> s c h w', s=self.pop_size) 
+                        for i, agent in enumerate(self.agents)}
             
-            total_costs = {agent: torch.zeros(self.pop_size, device=self.device) for agent in self.agents}
+            total_costs = {agent: torch.zeros(self.pop_size, device=self.device) 
+                            for agent in self.agents}
 
-            # 3. Trajectory Rollout
             for t in range(self.horizon):
                 next_states = {}
                 for rec in self.agents:
-                    # Get message from the "other" agent
                     sender = [a for a in self.agents if a != rec][0]
                     
                     if t == 0:
-                        # Use actual initial message
                         m = msgs[sender].to(self.device).unsqueeze(0)
-                        m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b= 1)
+                        m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b=1)
                     else:
-                        # Use predicted message from previous latent
                         m = self.comm_module(states[sender])
                     
-                    h_rec = self.msg_enc(m) # Process message
-                    # Predict next state: (current_z, action_at_t, message_context)
+                    h_rec = self.msg_enc(m)
                     z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
                     next_states[rec] = z_next
                     
-                    # Calculate MSE and sum over spatial/channel dims
                     step_loss = self.loss(z_next, z_goals[rec]).mean(dim=[1, 2, 3])
                     total_costs[rec] += step_loss
                 
                 states = next_states
 
-            # 4. Update distribution based on trajectory costs
-            print(total_costs[rec].shape, total_costs[rec])
             self.update_dist(total_costs, samples)
 
-        # 5. Execution: Pick the best action from the final distribution
-        # (Alternatively, pick the action from the best trajectory found in the last step)
         executed_actions = {}
         for agent in self.agents:
-            # Taking the most likely action at step 0
             act = torch.argmax(self.current_probs[agent][0]).item()
             executed_actions[agent] = act
             plan[agent].append(act)
 
         obs, rewards, done, infos = env.step(executed_actions)
-        print(f"Step: {step} | Actions: {executed_actions} | Rewards: {rewards}")
 
         if done.get('__all__', False): break
         step += 1
-        
-    return plan
-
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 12
-@patch
-def Plan2(self: FindGoalPlanner, env, preprocessor):
-    obs = env.reset()
-    step = 0
-    plan = {agent: [] for agent in self.agents}
-    
-    # Goal Latent Preparation
-    # Assume preprocessor returns goal images/positions
-    _, _, goals, _ = preprocessor(env, obs, pos=True, get_msg=True)
-
-    goal_pos = obs["global"]["goal_pos"]
-    position= repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
-    z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
-                                  position=position)
-    
-    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size) # [40, c, h, w]
-    z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] for i, agent in enumerate(self.agents)}
-
-    prev_obs, prev_pos, _, msgs = preprocessor(env, obs, pos=True, get_msg=True)
-    
-    for agent in self.agents:
-        self.current_probs[agent] = torch.full((self.horizon, self.action_dim), 1.0/self.action_dim, device=self.device)
-
-    # 2. Optimization Loop (CEM)
-    for n in range(self.opt_steps):
-        # Sample action sequences for the whole horizon
-        # Shape: (pop_size, horizon)
-        samples = {agent: torch.multinomial(self.current_probs[agent], self.pop_size, replacement=True).T \
-                    for agent in self.agents}
-        # make sampled actions one-hot encoded (to match expected model input)
-        samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float() \
-                    for agent in self.agents}
-        # samples are of shape: [pop_size, horizon, action_dim]
-        
-        # Initial latent state for this optimization roll-out
-        # Shape: (pop_size, latent_dim...)
-        start_z = self.model.backbone(torch.stack([prev_obs[a] for a in self.agents]).to(self.device),
-                                        position=torch.stack([prev_pos[agent] for agent in self.agents]).to(self.device))
-        
-        states = {agent: repeat(start_z[i], 'c h w -> s c h w', s=self.pop_size) \
-                    for i, agent in enumerate(self.agents)}
-        
-        total_costs = {agent: torch.zeros(self.pop_size, device=self.device) for agent in self.agents}
-
-        # 3. Trajectory Rollout
-        for t in range(self.horizon):
-            next_states = {}
-            for rec in self.agents:
-                # Get message from the "other" agent
-                sender = [a for a in self.agents if a != rec][0]
-                
-                if t == 0:
-                    # Use actual initial message
-                    m = msgs[sender].to(self.device).unsqueeze(0)
-                    m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b= 1)
-                else:
-                    # Use predicted message from previous latent
-                    m = self.comm_module(states[sender])
-                
-                h_rec = self.msg_enc(m) # Process message
-                # Predict next state: (current_z, action_at_t, message_context)
-                z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
-                next_states[rec] = z_next
-                
-                # Calculate MSE and sum over spatial/channel dims
-                step_loss = self.loss(z_next, z_goals[rec]).mean(dim=[1, 2, 3])
-                total_costs[rec] += step_loss
-            
-            states = next_states
-
-        # 4. Update distribution based on trajectory costs
-        print(total_costs[rec].shape, total_costs[rec])
-        self.update_dist(total_costs, samples)
-
-        # 5. Execution: Pick the best action from the final distribution
-        # (Alternatively, pick the action from the best trajectory found in the last step)
-        executed_actions = {}
-        for agent in self.agents:
-            # Taking the most likely action at step 0
-            act = torch.argmax(self.current_probs[agent][0]).item()
-            executed_actions[agent] = act
-            plan[agent].append(act)
-
-        obs, rewards, done, infos = env.step(executed_actions)
-        print(f"Step: {step} | Actions: {executed_actions} | Rewards: {rewards}")
-
-        if done.get('__all__', False): 
-            break
-        step += 1
     
     return plan
+
