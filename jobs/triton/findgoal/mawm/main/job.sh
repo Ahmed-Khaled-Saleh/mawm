@@ -1,18 +1,22 @@
 #!/bin/bash
-#SBATCH --account=project_2009050
 #SBATCH --job-name=distributed_wm_training
 #SBATCH --partition=gpu-a100-80g
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=100G
 #SBATCH --time=48:00:00
-#SBATCH --gres=gpu:a100:2
+#SBATCH --gres=gpu:a100:4
 #SBATCH --output=./logs/out_%j_%x_%N.log  # includes time stamp (t), job ID(j), job name (x), and node name (N)
 #SBATCH --error=./logs/err_%j_%x_%N.err
 
 
-module --force purge
-module load pytorch
+module load cuda
+module load python
+module load anaconda
+
+conda activate
+# conda init bash
+
 source /scratch/project_2009050/torchy/bin/activate
 cd /projappl/project_2009050/mawm/mains/
 
@@ -22,4 +26,4 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py --config ../cfgs/findgoal/mawm/main/mawm-seq-40.yaml --env_file ../.env --timestamp ${ts}
+srun torchrun --standalone --nnodes=1 --nproc_per_node=4 train_wm.py --config ../cfgs/findgoal/mawm/main/mawm-seq-40.yaml --env_file ../.env --timestamp ${ts}

@@ -79,11 +79,11 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
     goal_pos = obs["global"]["goal_pos"]
     position= repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
     z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
-                                    position=position)
+                                  position=position)
     
-    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.num_samples)
-    z_goals = {agent: z_goals[i:i+1] for i, agent in enumerate(self.agents)}
-
+    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.num_samples) # [40, c, h, w]
+    z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] for i, agent in enumerate(self.agents)}
+    
     while step < 100:
         prev_obs, prev_pos, _, msgs = preprocessor(env, obs, pos=True, get_msg=True)
         
@@ -123,11 +123,10 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
                         m = repeat(m, 'b c h w -> (s b) c h w', s=self.num_samples, b= 1)
                     else:
                         # Use predicted message from previous latent
-                        print(states[sender].shape)
                         m = self.comm_module(states[sender])
                     
                     h_rec = self.msg_enc(m) # Process message
-                    
+                    print(samples[rec].shape)
                     # Predict next state: (current_z, action_at_t, message_context)
                     z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
                     next_states[rec] = z_next

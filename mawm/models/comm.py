@@ -83,7 +83,7 @@ class CommModule(nn.Module):
             b, c, h, w = x.shape
         # Output shape: (batch, 5, 7, 7)
         x =  self.network(x)
-        x = rearrange(x, '(b t) c h w -> b t c h w', b= b, t= t)
+        x = rearrange(x, '(b t) c h w -> b t c h w', b= b, t= t) if 't' in locals() else x
         return x
 
 

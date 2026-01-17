@@ -231,10 +231,10 @@ def fit(self: WMTrainer):
             
             save_dict = {
                 'epoch': epoch,
-                'jepa': get_state(self.model),
-                'msg_enc': get_state(self.msg_enc),
-                'comm_module': get_state(self.comm_module),
-                'proj': get_state(self.proj),
+                'jepa': self.model.state_dict(),#get_state(self.model),
+                'msg_enc':self.msg_enc.state_dict(),#get_state(self.msg_enc),
+                'comm_module': self.comm_module.state_dict(),#get_state(self.comm_module),
+                'proj': self.proj.state_dict(),#get_state(self.proj),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
                 "lr": lr,
@@ -268,6 +268,5 @@ def fit(self: WMTrainer):
     df_reset = df_res.reset_index()
     if self.verbose:
         self.writer.write({'Train Loss Table': wandb.Table(dataframe= df_reset)})
-
-    self.writer.finish()
+        self.writer.finish()
     return df_reset

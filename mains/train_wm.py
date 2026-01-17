@@ -91,8 +91,11 @@ def main(cfg):
     }
 
     logger.info(f"Starting training... from {local_rank}")
-    writer = WandbWriter(cfg)
     verbose = dist.get_rank() == 0  # print only on global_rank==0
+    if verbose:
+        writer = WandbWriter(cfg)
+    else:
+        writer = None
     trainer = init_trainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                            device= local_rank, earlystopping= None, scheduler= scheduler,
                            writer= writer, verbose= verbose, logger = logger)
