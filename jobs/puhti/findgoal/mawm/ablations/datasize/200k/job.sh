@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=100G
 #SBATCH --time=48:00:00
-#SBATCH --gres=gpu:v100:4
+#SBATCH --gres=gpu:v100:2
 #SBATCH --output=./logs/out_%j_%x_%N.log  # includes time stamp (t), job ID(j), job name (x), and node name (N)
 #SBATCH --error=./logs/err_%j_%x_%N.err
 
@@ -22,5 +22,5 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun torchrun --standalone --nnodes=1 --nproc_per_node=4 train_wm.py --config ../cfgs/findgoal/mawm/ablations/datasize/mawm_ds_200k.yaml --env_file ../.env --timestamp ${ts}
+srun torchrun --standalone --nnodes=1 --nproc_per_node=2 train_wm.py --config ../cfgs/findgoal/mawm/ablations/datasize/mawm_ds_200k.yaml --env_file ../.env --timestamp ${ts}
 # srun python vicreg_main.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}

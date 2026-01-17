@@ -240,14 +240,14 @@ def plot_grid(img_tensor, msg_tensor):
     
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 34
+# %% ../../nbs/01b_data.utils.ipynb 33
 import os
 def get_data_path():
     paths = {
         "kaggle": "/kaggle/input/marlgridv3/MarlGridV3/",
         "puhti": "/scratch/project_2009050/datasets/MarlGridV3/",
         "mahti": "/scratch/project_2009050/datasets/MarlGridV3/",
-        "triton": "/home/sehadn1/MarlGridV3/",
+        "triton": "/scratch/work/sehadn1/MarlGridV3/",
         "local": "/home/ahmed//Ahmed-home/1- Projects/Research/Journal 2/Code/mawm/nbs/data_test/"
     }
 
@@ -258,7 +258,7 @@ def get_data_path():
     raise FileNotFoundError("No valid data path found for this hostname.")
 
 
-# %% ../../nbs/01b_data.utils.ipynb 35
+# %% ../../nbs/01b_data.utils.ipynb 34
 import torch
 
 from .loaders import MarlGridDataset
@@ -293,7 +293,7 @@ def init_data(cfg):
     return train_loader, val_loader
 
 
-# %% ../../nbs/01b_data.utils.ipynb 46
+# %% ../../nbs/01b_data.utils.ipynb 45
 import matplotlib.pyplot as plt
 import numpy as np
 import torchvision
@@ -328,7 +328,7 @@ def show_batch(dl, denormalize_tf, save_to="./batch.png"):
     plt.savefig("pdf.pdf", bbox_inches='tight')
     plt.show()
 
-# %% ../../nbs/01b_data.utils.ipynb 49
+# %% ../../nbs/01b_data.utils.ipynb 48
 import torch
 def init_data_dist(
         cfg,
