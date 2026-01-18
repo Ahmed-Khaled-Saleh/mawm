@@ -137,6 +137,7 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
             samples = {agent: torch.multinomial(self.current_probs[agent], 
                                                 self.pop_size, replacement=True).T 
                         for agent in self.agents}
+            
             samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float().to(self.device) 
                         for agent in self.agents}
             
@@ -172,6 +173,19 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
                 states = next_states
 
             self.update_dist(total_costs, samples)
+            # Inside opt_steps loop:
+            if n == 0 or n == self.opt_steps - 1:
+                for agent in self.agents:
+                    print(f"Iter {n}, {agent}: cost range [{total_costs[agent].min():.4f}, {total_costs[agent].max():.4f}]")
+
+
+        # After the opt_steps loop, before execution:
+        for agent in self.agents:
+            print(f"\n{agent} final distribution at t=0:")
+            print(self.current_probs[agent][0])
+            print(f"Best trajectory cost: {total_costs[agent].min().item():.4f}")
+            print(f"Worst trajectory cost: {total_costs[agent].max().item():.4f}")
+            print(f"Mean trajectory cost: {total_costs[agent].mean().item():.4f}")
 
         executed_actions = {}
         for agent in self.agents:
