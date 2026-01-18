@@ -79,7 +79,7 @@ class FindGoalPlanner:
         self.msg_enc = msg_enc
         self.comm_module = comm_module
         self.agents = agents
-        self.device = device
+        self.device = device    
         self.action_dim = action_dim
         self.pop_size = pop_size
         self.topk = topk
@@ -110,6 +110,7 @@ def update_dist(self: FindGoalPlanner, costs, samples):
 
 # %% ../../nbs/10b_evaluators.planning_eval.ipynb 33
 @patch
+@torch.no_grad()
 def Plan(self: FindGoalPlanner, env, preprocessor):
     obs = env.reset()
     step = 0
@@ -119,7 +120,7 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
     goal_pos = obs["global"]["goal_pos"]
     position = repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
     z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
-                                    position=position)
+                                    position=position.to(self.device))
     
     z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size)
     z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] 
@@ -136,7 +137,7 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
             samples = {agent: torch.multinomial(self.current_probs[agent], 
                                                 self.pop_size, replacement=True).T 
                         for agent in self.agents}
-            samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float() 
+            samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float().to(self.device) 
                         for agent in self.agents}
             
             start_z = self.model.backbone(
@@ -159,9 +160,9 @@ def Plan(self: FindGoalPlanner, env, preprocessor):
                         m = msgs[sender].to(self.device).unsqueeze(0)
                         m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b=1)
                     else:
-                        m = self.comm_module(states[sender])
+                        m = self.comm_module(states[sender].to(self.device))
                     
-                    h_rec = self.msg_enc(m)
+                    h_rec = self.msg_enc(m.to(self.device))
                     z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
                     next_states[rec] = z_next
                     
