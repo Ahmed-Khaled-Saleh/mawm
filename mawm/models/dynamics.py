@@ -90,30 +90,17 @@ class ConvPredictor(nn.Module):
         )
 
         self.layers = nn.Sequential(*layers)
-        # In your Predictor/Dynamics model __init__:
-        torch.nn.init.zeros_(self.layers[-1].weight)
-        torch.nn.init.zeros_(self.layers[-1].bias)
-
-        self.msg_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
-
-        # Action encoder
-        if self.config.action_encoder_arch and self.config.action_encoder_arch != "id":
-            layer_dims = [int(x) for x in self.config.action_encoder_arch.split("-")]
-            layers = []
-            for i in range(len(layer_dims) - 1):
-                layers.append(nn.Linear(layer_dims[i], layer_dims[i + 1]))
-                layers.append(nn.ReLU())
-            # remove last ReLU
-            layers.pop()
-
+        
+        if self.config.action_encoder_arch != "id":
             self.action_encoder = nn.Sequential(
-                *layers,
+                nn.Linear(self.action_dim, repr_dim[0]),
                 Expander2D(w=repr_dim[-2], h=repr_dim[-1]),
             )
-            # self.action_dim = layer_dims[-1]
+            
         else:
             self.action_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
 
+        self.msg_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
     
 
 # %% ../../nbs/02c_models.dynamics.ipynb 16
@@ -157,14 +144,14 @@ def forward_multiple(
 
         lst_msgs = []
         lst_msgs.append(msgs[i])
-        delta = self.forward(
-            current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
-        )
-        # delta = torch.tanh(delta) * 0.1  # Constrain the max movement
-        next_state = current_state + delta
-        # next_state = self.forward(
+        # delta = self.forward(
         #     current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
         # )
+        # delta = torch.tanh(delta) * 0.1  # Constrain the max movement
+        # next_state = current_state + delta
+        next_state = self.forward(
+            current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
+        )
         current_state = next_state
 
         state_predictions.append(next_state)
