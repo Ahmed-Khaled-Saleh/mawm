@@ -90,6 +90,9 @@ class ConvPredictor(nn.Module):
         )
 
         self.layers = nn.Sequential(*layers)
+        # In your Predictor/Dynamics model __init__:
+        torch.nn.init.zeros_(self.layers[-1].weight)
+        torch.nn.init.zeros_(self.layers[-1].bias)
 
         self.msg_encoder = Expander2D(w=repr_dim[-2], h=repr_dim[-1])
 
@@ -157,6 +160,7 @@ def forward_multiple(
         delta = self.forward(
             current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
         )
+        delta = torch.tanh(delta) * 0.1  # Constrain the max movement
         next_state = current_state + delta
         # next_state = self.forward(
         #     current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
