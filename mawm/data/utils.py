@@ -248,7 +248,8 @@ def get_data_path():
         "puhti": "/scratch/project_2009050/datasets/MarlGridV3/",
         "mahti": "/scratch/project_2009050/datasets/MarlGridV3/",
         "triton": "/scratch/work/sehadn1/MarlGridV3/",
-        "local": "/home/ahmed//Ahmed-home/1- Projects/Research/Journal 2/Code/mawm/nbs/data_test/"
+        "local": "/home/ahmed//Ahmed-home/1- Projects/Research/Journal 2/Code/mawm/nbs/data_test/",
+        "local_full": "/home/ahmed//Ahmed-home/Downloads/data/MarlGridV3/"
     }
 
     for hostname, path in paths.items():

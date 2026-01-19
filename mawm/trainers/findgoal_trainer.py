@@ -49,6 +49,7 @@ class WMTrainer:
         self.disSigReg = SIGRegDistributed().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
 
+        # self.anchor_head = nn.Linear(self.cfg.model.jepa.latent_dim, 2).to(self.device)
         self.lambda_ = self.cfg.loss.lambda_
         self.W_H_PRED = self.cfg.loss.W_H_PRED
         self.W_SIM_T = self.cfg.loss.W_SIM_T
@@ -61,43 +62,126 @@ class WMTrainer:
 
     
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
-@patch
-def criterion(self: WMTrainer, global_step, Z0, Z, msg_target, msg_hat, proj_h, proj_z, mask_t, mask):
-
-    flat_encodings = flatten_conv_output(Z0) # [T, B, c`, h`, w`] => [T, B, d]
-    sigreg_img = self.disSigReg(flat_encodings[:1], global_step= global_step)
-
-    transition_mask = mask_t[1:] * mask_t[:-1]
-    diff = (Z0[1:] - Z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
-    sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp_min(1)
-
-    if self.cfg.loss.vicreg.sim_coeff_t:
-        diff_t = ( Z0[1:] -  Z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
-        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp_min(1)
-    else:
-        sim_loss_t = torch.zeros([1], device=self.device)
-
-    msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1))
-
-    sigreg_msg = self.disSigReg(proj_h, global_step= global_step)
-    sigreg_obs = self.disSigReg(proj_z, global_step= global_step)
-
-    inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
-    inv_loss_sender = (inv_loss_sender * transition_mask).sum() / transition_mask.sum().clamp_min(1) 
-
-    return {
-        'sigreg_img': sigreg_img,
-        'sigreg_msg': sigreg_msg,
-        'sigreg_obs': sigreg_obs,
-        'sim_loss_dynamics': sim_loss,
-        'sim_loss_t': sim_loss_t,
-        'inv_loss_sender': inv_loss_sender,
-        'msg_pred_loss': msg_pred_loss
-    }
-            
-
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
+@patch
+def criterion(
+    self: WMTrainer,
+    global_step,
+    Z0,            # encoded latents [T, B, C, H, W] (stop-grad)
+    Z_hat,         # predicted latents [T, B, C, H, W]
+    msg_target,
+    msg_hat,
+    proj_h,
+    proj_z,
+    mask_t,
+    actions=None,          # [T-1, B, A]  (for action-sep)
+    anchor_target=None     # optional (dx, dy) or moved flag
+):
+    """
+    Combined JEPA loss with:
+    - delta dynamics (B)
+    - action separation (A)
+    - weak control anchor (C)
+    """
+
+    losses = {}
+
+    # ---------------------------------------------------------
+    # 1. SIGReg on image / message / obs (UNCHANGED)
+    # ---------------------------------------------------------
+    flat_encodings = flatten_conv_output(Z0)  # [T, B, d]
+    losses['sigreg_img'] = self.disSigReg(flat_encodings[:1], global_step)
+    losses['sigreg_msg'] = self.disSigReg(proj_h, global_step)
+    losses['sigreg_obs'] = self.disSigReg(proj_z, global_step)
+
+    # ---------------------------------------------------------
+    # 2. Transition mask
+    # ---------------------------------------------------------
+    transition_mask = mask_t[1:] * mask_t[:-1]   # [T-1, B]
+
+    # ---------------------------------------------------------
+    # 3. DELTA DYNAMICS LOSS (Option B)
+    # ---------------------------------------------------------
+    delta_hat = Z_hat[1:] - Z_hat[:-1]
+    delta_true = Z0[1:] - Z0[:-1]
+
+    diff_delta = (delta_hat - delta_true).pow(2).mean(dim=(2, 3, 4))
+    losses['sim_loss_dynamics'] = (
+        (diff_delta * transition_mask).sum()
+        / transition_mask.sum().clamp_min(1)
+    )
+
+    # ---------------------------------------------------------
+    # 4. GATED TIME-SMOOTHNESS (important!)
+    # ---------------------------------------------------------
+    if self.cfg.loss.vicreg.sim_coeff_t:
+        # penalize only unexplained change
+        resid = (Z0[1:] - Z0[:-1]) - delta_hat.detach()
+        diff_t = resid.pow(2).mean(dim=(2, 3, 4))
+
+        losses['sim_loss_t'] = (
+            (diff_t * transition_mask).sum()
+            / transition_mask.sum().clamp_min(1)
+        )
+    else:
+        losses['sim_loss_t'] = torch.zeros(1, device=self.device)
+
+    # ---------------------------------------------------------
+    # 5. MESSAGE PREDICTION (UNCHANGED)
+    # ---------------------------------------------------------
+    losses['msg_pred_loss'] = self.cross_entropy(
+        msg_hat.flatten(0, 1),
+        msg_target.flatten(0, 1)
+    )
+
+    # ---------------------------------------------------------
+    # 6. SENDER / RECEIVER INVARIANCE (UNCHANGED)
+    # ---------------------------------------------------------
+    inv_loss_sender = (proj_z - proj_h).square().mean(dim=-1)
+    losses['inv_loss_sender'] = (
+        (inv_loss_sender * transition_mask).sum()
+        / transition_mask.sum().clamp_min(1)
+    )
+
+    # ---------------------------------------------------------
+    # # 7. ACTION SEPARATION LOSS (Option A)
+    # # ---------------------------------------------------------
+    # if actions is not None:
+    #     # sample a second action (shuffle within batch)
+    #     perm = torch.randperm(actions.shape[1])
+    #     actions_alt = actions[:, perm]
+
+    #     delta_a1 = self.predict_delta(Z_hat[:-1], actions)
+    #     delta_a2 = self.predict_delta(Z_hat[:-1], actions_alt)
+
+    #     act_sep = (delta_a1 - delta_a2).pow(2).mean(dim=(2, 3, 4))
+    #     losses['action_separation'] = -(
+    #         (act_sep * transition_mask).sum()
+    #         / transition_mask.sum().clamp_min(1)
+    #     )
+    # else:
+    #     losses['action_separation'] = torch.zeros(1, device=self.device)
+
+    # ---------------------------------------------------------
+    # 8. WEAK CONTROL ANCHOR (Option C)
+    # ---------------------------------------------------------
+    # if anchor_target is not None:
+    #     latents= flatten_conv_output(Z0)  # [T, B, d]
+    #     latents = rearrange(latents, 't b d -> (t b) d')  # [(T*B), d]
+    #     anchor_pred = self.anchor_head(latents[:-1])
+    #     anchor_loss = self.anchor_loss(anchor_pred, anchor_target)
+
+    #     losses['anchor_loss'] = (
+    #         (anchor_loss * transition_mask).sum()
+    #         / transition_mask.sum().clamp_min(1)
+    #     )
+    # else:
+    #     losses['anchor_loss'] = torch.zeros(1, device=self.device)
+
+    return losses
+
+
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
@@ -117,6 +201,7 @@ def train_epoch(self: WMTrainer, epoch):
         self.optimizer.zero_grad()
         batch_loss = 0
 
+        ## Receiver End
         for agent_id in self.agents:
             obs, pos, _, _, act, _, dones = data[agent_id].values()
             mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
@@ -134,20 +219,29 @@ def train_epoch(self: WMTrainer, epoch):
 
             self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {act.device}")
 
-            for other_agent in self.agents:
-                if other_agent != agent_id:
-                    obs_sender, pos_sender, msg, msg_target, _,_, _ = data[other_agent].values()
+            #### SENDER End
+            for sender in self.agents:
+                if sender != agent_id:
+                    obs_sender, pos_sender, msg, msg_target, _,_, _ = data[sender].values()
 
                     obs_sender = obs_sender.to(self.device)
                     pos_sender = pos_sender.to(self.device)
                     msg = msg.to(self.device)
                     msg_target = msg_target.to(self.device)
+
                     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
             
+            ### Reciever JEPA
             h = self.msg_enc(msg) # [B, T, C, H, W] => [B, T, dim=32]
-
-            Z0, Z = self.model(x= obs, pos= pos, actions= act, msgs= h, T= act.size(1)-1)#[B, T, c, h, w] =>  [T, B, c, h, w]
+            Z0, Z = self.model(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
+                               pos= pos, 
+                               actions= act, 
+                               msgs= h, 
+                               T= act.size(1)-1)
             
+            delta_a1 = self.model.dynamics
+            
+            ## Sender JEPA
             if hasattr(self.model, 'module'):
                 z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
             else:
@@ -155,6 +249,7 @@ def train_epoch(self: WMTrainer, epoch):
                 
             proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
             msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+            
             
             losses = self.criterion(global_step, Z0, Z, msg_target, msg_hat, proj_h, proj_z, mask_t, mask)
           
@@ -168,6 +263,10 @@ def train_epoch(self: WMTrainer, epoch):
                     f'{agent_id}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
                     f'{agent_id}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
                 })
+    #             with torch.no_grad():
+    # dz = (Z[1:] - Z[:-1]).pow(2).mean(dim=(2,3,4))
+    # print(dz.mean(), dz.std())
+
                 
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
@@ -203,7 +302,7 @@ def train_epoch(self: WMTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
