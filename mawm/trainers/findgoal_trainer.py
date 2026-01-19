@@ -173,7 +173,7 @@ def train_epoch(self: WMTrainer, epoch):
             msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
             
             
-            losses = self.criterion(global_step, Z0, Z, act, msg_target, msg_hat, proj_h, proj_z, mask_t, mask)
+            losses = self.criterion(global_step, Z0, Z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
           
             if self.verbose:
                 self.writer.write({
