@@ -239,7 +239,7 @@ def train_epoch(self: WMTrainer, epoch):
                                msgs= h, 
                                T= act.size(1)-1)
             
-            delta_a1 = self.model.dynamics
+            # delta_a1 = self.model.dynamics
             
             ## Sender JEPA
             if hasattr(self.model, 'module'):
