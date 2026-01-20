@@ -24,7 +24,6 @@ def preprocessor(env, obs, info= False, pos=True, get_msg=True):
     messages = {}
     goal_pos = obs["global"]["goal_pos"]
 
-
     agents = [f'agent_{i}' for i in range(env.num_agents)]
     for i, agent_id in enumerate(agents):
         obs_transformed[agent_id] = base_tf(obs[agent_id]['pov'].astype(np.uint8))  # Add batch dimension
@@ -48,7 +47,7 @@ def preprocessor(env, obs, info= False, pos=True, get_msg=True):
     else:
         return obs_transformed
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 7
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 8
 def fix_params(model, ddp_state_dict):
 
     from collections import OrderedDict
@@ -61,7 +60,7 @@ def fix_params(model, ddp_state_dict):
     model.load_state_dict(new_state_dict)
     return model
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 29
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 37
 class FindGoalPlanner:
 
     def __init__(self, model, msg_enc, comm_module, action_dim=5, horizon=10, 
@@ -83,7 +82,7 @@ class FindGoalPlanner:
         self.loss = torch.nn.MSELoss(reduction='none')
 
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 30
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 38
 @patch    
 def update_dist(self: FindGoalPlanner, costs, samples):
     for agent in self.agents:
@@ -100,99 +99,87 @@ def update_dist(self: FindGoalPlanner, costs, samples):
 
 
 
-# %% ../../nbs/10b_evaluators.planning_eval.ipynb 31
+# %% ../../nbs/10b_evaluators.planning_eval.ipynb 39
 @patch
 @torch.no_grad()
 def Plan(self: FindGoalPlanner, env, preprocessor):
-    obs = env.reset()
-    step = 0
-    plan = {agent: [] for agent in self.agents}
-    
-    _, _, goals, _ = preprocessor(env, obs, pos=True, get_msg=True)
-    goal_pos = obs["global"]["goal_pos"]
-    position = repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
-    z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
-                                    position=position.to(self.device))
-    
-    z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size)
-    z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] 
-                for i, agent in enumerate(self.agents)}
-    
-    while step < 100:
-        prev_obs, prev_pos, _, msgs = preprocessor(env, obs, pos=True, get_msg=True)
+        obs = env.reset()
+        step = 0
+        plan = {agent: [] for agent in self.agents}
         
-        for agent in self.agents:
-            self.current_probs[agent] = torch.full((self.horizon, self.action_dim), 
-                                                    1.0/self.action_dim, device=self.device)
-
-        for n in range(self.opt_steps):
-            samples = {agent: torch.multinomial(self.current_probs[agent], 
-                                                self.pop_size, replacement=True).T 
-                        for agent in self.agents}
-            # count how many items per action category
-            action_counts = {agent: torch.sum(F.one_hot(samples[agent], num_classes=self.action_dim), dim=1) 
-                             for agent in self.agents}
-            print(f"Iter {n}, action counts: {action_counts}")
+        _, _, goals, _ = preprocessor(env, obs, pos=True, get_msg=True)
+        goal_pos = obs["global"]["goal_pos"]
+        position = repeat(torch.from_numpy(goal_pos).unsqueeze(0), "b d -> g b d", b=1, g=2)
+        z_goals = self.model.backbone(torch.stack([goals[agent] for agent in self.agents]).to(self.device),
+                                        position=position.to(self.device))
+        
+        z_goals = repeat(z_goals, 'b c h w -> (b s) c h w', s=self.pop_size)
+        z_goals = {agent: z_goals[z_goals.size(0) // 2 * i : z_goals.size(0) // 2 * (i+1)] 
+                    for i, agent in enumerate(self.agents)}
+        
+        while step < 100:
+            prev_obs, prev_pos, _, msgs = preprocessor(env, obs, pos=True, get_msg=True)
             
-            samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float().to(self.device) 
-                        for agent in self.agents}
-            
-            start_z = self.model.backbone(
-                torch.stack([prev_obs[a] for a in self.agents]).to(self.device),
-                position=torch.stack([prev_pos[agent] for agent in self.agents]).to(self.device)
-            )
-            
-            states = {agent: repeat(start_z[i], 'c h w -> s c h w', s=self.pop_size) 
-                        for i, agent in enumerate(self.agents)}
+            for agent in self.agents:
+                self.current_probs[agent] = torch.full((self.horizon, self.action_dim), 
+                                                        1.0/self.action_dim, device=self.device)
             
             total_costs = {agent: torch.zeros(self.pop_size, device=self.device) 
-                            for agent in self.agents}
+                                for agent in self.agents}
+            for n in range(self.opt_steps):
 
-            for t in range(self.horizon):
-                next_states = {}
-                for rec in self.agents:
-                    sender = [a for a in self.agents if a != rec][0]
-                    
-                    if t == 0:
-                        m = msgs[sender].to(self.device).unsqueeze(0)
-                        m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b=1)
-                    else:
-                        m = self.comm_module(states[sender].to(self.device))
-                    
-                    h_rec = self.msg_enc(m.to(self.device))
-                    z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
-                    next_states[rec] = z_next
-                    
-                    step_loss = self.loss(z_next, z_goals[rec]).mean(dim=[1, 2, 3])
-                    total_costs[rec] += step_loss
+                samples = {agent: torch.multinomial(self.current_probs[agent], self.pop_size, replacement=True).T 
+                            for agent in self.agents}
                 
+                samples = {agent: F.one_hot(samples[agent], num_classes=self.action_dim).float().to(self.device) 
+                            for agent in self.agents}
+                
+                start_z = self.model.backbone(
+                    torch.stack([prev_obs[a] for a in self.agents]).to(self.device),
+                    position=torch.stack([prev_pos[agent] for agent in self.agents]).to(self.device)
+                )
+                
+                states = {agent: repeat(start_z[i], 'c h w -> s c h w', s=self.pop_size) 
+                            for i, agent in enumerate(self.agents)}
+
+                traj_cost = {agent: torch.zeros(self.pop_size, device=self.device) 
+                         for agent in self.agents}
+
+                Z_T = {agent: None for agent in self.agents}
+                for t in range(self.horizon):
+                    next_states = {}
+                    for rec in self.agents:
+                        sender = [a for a in self.agents if a != rec][0]
+                        
+                        if t == 0:
+                            m = msgs[sender].to(self.device).unsqueeze(0)
+                            m = repeat(m, 'b c h w -> (s b) c h w', s=self.pop_size, b=1)
+                        else:
+                            m = self.comm_module(states[sender].to(self.device))
+                        
+                        h_rec = self.msg_enc(m.to(self.device))
+                        z_next = self.model.dynamics(states[rec], samples[rec][:, t], h_rec.squeeze(1))
+                        next_states[rec] = z_next
+
+                        if t == self.horizon - 1:
+                            Z_T[rec] = z_next
+                        
+                step_loss = {agent: self.loss(next_states[agent], Z_T[agent]).mean(dim=[1, 2, 3]) for agent in self.agents}
+                for agent in self.agents:
+                    traj_cost[agent] += step_loss[agent]
                 states = next_states
 
-            self.update_dist(total_costs, samples)
-            # Inside opt_steps loop:
-            if n == 0 or n == self.opt_steps - 1:
-                for agent in self.agents:
-                    print(f"Iter {n}, {agent}: cost range [{total_costs[agent].min():.4f}, {total_costs[agent].max():.4f}]")
+                self.update_dist(traj_cost, samples)
+                
+            executed_actions = {}
+            for agent in self.agents:
+                act = torch.argmax(self.current_probs[agent][0]).item()
+                executed_actions[agent] = act
+                plan[agent].append(act)
 
+            obs, rewards, done, infos = env.step(executed_actions)
 
-        # After the opt_steps loop, before execution:
-        for agent in self.agents:
-            print(f"\n{agent} final distribution at t=0:")
-            print(self.current_probs[agent][0])
-            print(f"Best trajectory cost: {total_costs[agent].min().item():.4f}")
-            print(f"Worst trajectory cost: {total_costs[agent].max().item():.4f}")
-            print(f"Mean trajectory cost: {total_costs[agent].mean().item():.4f}")
-
-        executed_actions = {}
-        for agent in self.agents:
-            act = torch.argmax(self.current_probs[agent][0]).item()
-            executed_actions[agent] = act
-            plan[agent].append(act)
-
-        obs, rewards, done, infos = env.step(executed_actions)
-
-        if done.get('__all__', False): break
-        step += 1
-    
-    return plan
-
+            if done.get('__all__', False): break
+            step += 1
+        
+        return plan

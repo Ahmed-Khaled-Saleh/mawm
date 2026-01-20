@@ -1,6 +1,6 @@
 project_name: Debug
   
-epochs: 300
+epochs: 600
 save_every_freq: 5
 loss_fn: CrossEntropyLoss
 writer: WandbWriter

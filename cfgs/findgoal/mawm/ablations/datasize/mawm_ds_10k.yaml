@@ -63,7 +63,7 @@ loss:
   W_SIM_T: 50
   projector: id
   idm:
-    action_dim: 2
+    action_dim: 5
     coeff: 5.3964
     arch: 'conv'
     use_pred: false
