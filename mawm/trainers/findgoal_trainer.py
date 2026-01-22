@@ -204,7 +204,7 @@ def train_epoch(self: WMTrainer, epoch):
                 with torch.no_grad():
                     # Predict WITHOUT messages
                     transition_mask = mask_t[1:] * mask_t[:-1]
-                    Z_no_msg = self.model(x=obs, pos=pos, actions=act, 
+                    _, Z_no_msg = self.model(x=obs, pos=pos, actions=act, 
                                         msgs=torch.zeros_like(h), T=act.size(1)-1)
                     sim_loss_no_msg = (Z0[1:] - Z_no_msg[1:]).pow(2).mean(dim=(2,3,4))
                     sim_loss_no_msg = (sim_loss_no_msg * transition_mask).sum() / transition_mask.sum().clamp_min(1)
