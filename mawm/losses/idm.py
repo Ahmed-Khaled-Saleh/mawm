@@ -73,6 +73,7 @@ class IDMLoss(torch.nn.Module):
 @patch
 def __call__(self: IDMLoss, embeddings, predictions, actions):
     actions = rearrange(actions, "b t ... -> t b ...")
+    actions = actions[:-1].flatten(start_dim=0, end_dim=1)
 
     if self.config.use_pred:
         curr_embeds = predictions[:-1]
@@ -88,13 +89,14 @@ def __call__(self: IDMLoss, embeddings, predictions, actions):
         next_embeds = flatten_conv_output(next_embeds)
         repr_input = torch.cat([curr_embeds, next_embeds], dim=-1)
     
-    repr_input = repr_input.flatten(start_dim=0, end_dim=1)
+    repr_input = rearrange(repr_input, "t b ... -> (t b) ...")
     actions_pred = self.action_predictor(repr_input)
 
     action_loss = F.cross_entropy(
         actions_pred,
-        actions[:-1].flatten(start_dim=0, end_dim=1).to(actions_pred.device),
+        actions.to(actions_pred.device),
         reduction="mean",
     )
-    total_loss=self.config.coeff * action_loss
-    return total_loss
+    
+    # total_loss = action_loss
+    return action_loss

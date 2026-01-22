@@ -189,7 +189,6 @@ def train_epoch(self: WMTrainer, epoch):
                         msg_used = msg  # [B, T, C, H, W]
                     h = self.msg_enc(msg_used) # [B, T, C, H, W] => [B, T, dim=32]
                     proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
-                    
 
             ### Reciever JEPA
             Z0, Z = self.model(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
