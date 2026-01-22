@@ -64,7 +64,7 @@ loss:
   projector: id
   idm:
     action_dim: 5
-    coeff: 5.3964
+    coeff: 0.2
     arch: 'conv'
     use_pred: false
     arch_subclass: a
