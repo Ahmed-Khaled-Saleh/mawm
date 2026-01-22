@@ -190,6 +190,7 @@ def train_epoch(self: WMTrainer, epoch):
                     h = self.msg_enc(msg_used) # [B, T, C, H, W] => [B, T, dim=32]
                     proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
                     
+
             ### Reciever JEPA
             Z0, Z = self.model(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
                                pos= pos, 
@@ -200,6 +201,19 @@ def train_epoch(self: WMTrainer, epoch):
             losses = self.criterion(global_step, Z0, Z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
 
             if self.verbose:
+
+                with torch.no_grad():
+                    # Predict WITHOUT messages
+                    transition_mask = mask_t[1:] * mask_t[:-1]
+                    Z_no_msg = self.model(x=obs, pos=pos, actions=act, 
+                                        msgs=torch.zeros_like(h), T=act.size(1)-1)
+                    sim_loss_no_msg = (Z0[1:] - Z_no_msg[1:]).pow(2).mean(dim=(2,3,4))
+                    sim_loss_no_msg = (sim_loss_no_msg * transition_mask).sum() / transition_mask.sum().clamp_min(1)
+                    
+                    # Log comparison
+                    self.logger.info(f"Prediction error WITH msgs: {losses['sim_loss_dynamics'].item():.4f}")
+                    self.logger.info(f"Prediction error WITHOUT msgs: {sim_loss_no_msg.mean().item():.4f}")
+
                 self.writer.write({
                     f'{rec}/train/sigreg_img': losses['sigreg_img'].item(),
                     f'{rec}/train/sigreg_msg': losses['sigreg_msg'].item(),
@@ -208,7 +222,8 @@ def train_epoch(self: WMTrainer, epoch):
                     f'{rec}/train/sim_loss_t': losses['sim_loss_t'].item(),
                     f'{rec}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
                     f'{rec}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
-                    f'{rec}/train/idm_loss': losses['idm_loss'].item()
+                    f'{rec}/train/idm_loss': losses['idm_loss'].item(),
+                    f'{rec}/train/sim_loss_no_msg': sim_loss_no_msg.item()
                 })
                 
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
@@ -246,7 +261,7 @@ def train_epoch(self: WMTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 12
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 13
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
