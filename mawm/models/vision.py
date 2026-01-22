@@ -90,11 +90,11 @@ class GridMLP(nn.Module):
         self.y_embeddings = nn.Embedding(grid_height, embed_dim)
         
         self.mlp = nn.Sequential(
-            nn.Linear(embed_dim * 2, 32),
-            nn.ReLU(),
-            nn.Linear(32, 32),
-            nn.ReLU(),
-            nn.Linear(32, 16),
+            # nn.Linear(embed_dim * 2, 16),
+            # nn.ReLU(),
+            # nn.Linear(32, 32),
+            # nn.ReLU(),
+            # nn.Linear(32, 16),
             Expander2D(w, h)
         )
         
@@ -111,7 +111,7 @@ class GridMLP(nn.Module):
             
         x_vec = self.x_embeddings(x_coords)
         y_vec = self.y_embeddings(y_coords)
-        
+
         combined = torch.cat([x_vec, y_vec], dim=-1)
         return self.mlp(combined)
 

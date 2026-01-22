@@ -144,11 +144,7 @@ def forward_multiple(
 
         lst_msgs = []
         lst_msgs.append(msgs[i])
-        # delta = self.forward(
-        #     current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
-        # )
-        # delta = torch.tanh(delta) * 0.1  # Constrain the max movement
-        # next_state = current_state + delta
+
         next_state = self.forward(
             current_state, torch.cat(predictor_input, dim=-1), torch.cat(lst_msgs, dim=-1)
         )

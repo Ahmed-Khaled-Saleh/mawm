@@ -12,6 +12,7 @@ from torchvision.utils import save_image
 import torch
 import os
 from torch import nn
+import torch.nn.functional as F
 import pandas as pd
 
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 5
@@ -55,6 +56,9 @@ class WMTrainer:
         self.lambda_ = self.cfg.loss.lambda_
         self.W_H_PRED = self.cfg.loss.W_H_PRED
         self.W_SIM_T = self.cfg.loss.W_SIM_T
+
+        self.schedule_start_epoch = 10  # Start mixing at epoch 10
+        self.schedule_end_epoch = 50    # Fully use predictions by epoch 50
 
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
@@ -104,6 +108,18 @@ def criterion(self: WMTrainer, global_step, Z0, Z, actions, msg_target, msg_hat,
             
 
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
+@patch
+def get_sampling_prob(self: WMTrainer, epoch):
+    if epoch < self.schedule_start_epoch:
+        return 0.0  # Always use ground truth
+    elif epoch >= self.schedule_end_epoch:
+        return 1.0  # Always use predictions
+    else:
+        # Linear interpolation
+        progress = (epoch - self.schedule_start_epoch) / (self.schedule_end_epoch - self.schedule_start_epoch)
+        return progress
+
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
@@ -119,13 +135,14 @@ def train_epoch(self: WMTrainer, epoch):
     self.logger.info(f"Device used: {self.device}")
     self.sampler.set_epoch(epoch)
     for batch_idx, data in enumerate(self.train_loader):
+        
         global_step = epoch * len(self.train_loader) + batch_idx
         self.optimizer.zero_grad()
         batch_loss = 0
 
         ## Receiver End
-        for agent_id in self.agents:
-            obs, pos, _, _, act, _, dones = data[agent_id].values()
+        for rec in self.agents:
+            obs, pos, _, _, act, _, dones = data[rec].values()
             mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
             mask = rearrange(mask, 'b t d-> b (t d)', d=1)
             mask_t = rearrange(mask, 'b t -> t b')
@@ -143,7 +160,7 @@ def train_epoch(self: WMTrainer, epoch):
 
             #### SENDER End
             for sender in self.agents:
-                if sender != agent_id:
+                if sender != rec:
                     obs_sender, pos_sender, msg, msg_target, _,_, _ = data[sender].values()
 
                     obs_sender = obs_sender.to(self.device)
@@ -152,44 +169,49 @@ def train_epoch(self: WMTrainer, epoch):
                     msg_target = msg_target.to(self.device)
 
                     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
-            
+
+                    ## Sender JEPA
+                    if hasattr(self.model, 'module'):
+                        z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                    else:
+                        z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+                        
+                    proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
+                    msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+                    
+                    sampling_prob = self.get_sampling_prob(epoch)
+
+                    if torch.rand(1).item() < sampling_prob:
+                        sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
+                        sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
+                        probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
+                        msg_used = sample + probs - probs.detach()
+
+                    else:
+                        msg_used = msg  # [B, T, C, H, W]
+                        
+                    h = self.msg_enc(msg_used) # [B, T, C, H, W] => [B, T, dim=32]
+
             ### Reciever JEPA
-            h = self.msg_enc(msg) # [B, T, C, H, W] => [B, T, dim=32]
             Z0, Z = self.model(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
                                pos= pos, 
                                actions= act, 
                                msgs= h, 
                                T= act.size(1)-1)
             
-            # delta_a1 = self.model.dynamics
-            
-            ## Sender JEPA
-            if hasattr(self.model, 'module'):
-                z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-            else:
-                z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-                
-            proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
-            msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
-            
-            
             losses = self.criterion(global_step, Z0, Z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
-          
+
             if self.verbose:
                 self.writer.write({
-                    f'{agent_id}/train/sigreg_img': losses['sigreg_img'].item(),
-                    f'{agent_id}/train/sigreg_msg': losses['sigreg_msg'].item(),
-                    f'{agent_id}/train/sigreg_obs': losses['sigreg_obs'].item(),
-                    f'{agent_id}/train/sim_loss': losses['sim_loss_dynamics'].item(),
-                    f'{agent_id}/train/sim_loss_t': losses['sim_loss_t'].item(),
-                    f'{agent_id}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
-                    f'{agent_id}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
-                    f'{agent_id}/train/idm_loss': losses['idm_loss'].item()
+                    f'{rec}/train/sigreg_img': losses['sigreg_img'].item(),
+                    f'{rec}/train/sigreg_msg': losses['sigreg_msg'].item(),
+                    f'{rec}/train/sigreg_obs': losses['sigreg_obs'].item(),
+                    f'{rec}/train/sim_loss': losses['sim_loss_dynamics'].item(),
+                    f'{rec}/train/sim_loss_t': losses['sim_loss_t'].item(),
+                    f'{rec}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
+                    f'{rec}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
+                    f'{rec}/train/idm_loss': losses['idm_loss'].item()
                 })
-    #             with torch.no_grad():
-    # dz = (Z[1:] - Z[:-1]).pow(2).mean(dim=(2,3,4))
-    # print(dz.mean(), dz.std())
-
                 
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
@@ -204,7 +226,7 @@ def train_epoch(self: WMTrainer, epoch):
             agent_loss = sender_jepa_loss + rec_jepa_loss + smothness_loss + comm_mod_loss + idm_loss
             scaled_loss = agent_loss / len(self.agents)
             scaled_loss.backward()
-            self.logger.info(f"Agent: {agent_id}, agent_loss: {agent_loss.item():.4f}")
+            self.logger.info(f"Agent: {rec}, agent_loss: {agent_loss.item():.4f}")
             
             batch_loss += scaled_loss
 
@@ -226,7 +248,7 @@ def train_epoch(self: WMTrainer, epoch):
     return final_epoch_loss
        
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 12
 import wandb
 CHECKPOINT_FREQ = 1
 @patch

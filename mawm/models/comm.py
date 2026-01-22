@@ -35,6 +35,7 @@ class MSGEnc(nn.Module):
             nn.ReLU(),
             nn.Linear(64, latent_dim)
         )
+        # self.net = nn.Linear(num_primitives * 7 * 7, latent_dim)
         
     def forward(self, x):
         if x.dim() == 4:
@@ -43,6 +44,8 @@ class MSGEnc(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
         x = self.net(x) # [B*T, latent_dim]
         x = rearrange(x, '(b t) d -> b t d', b= B)
+        # x = rearrange(x, 'b t c h w -> b t (c h w)')
+        # x = self.net(x)  # [B, T, latent_dim]
         return x
 
 
