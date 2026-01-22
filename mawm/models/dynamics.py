@@ -111,8 +111,8 @@ def forward(self: ConvPredictor, current_state, curr_action, curr_msg):
     curr_msg = self.msg_encoder(curr_msg)
     x = torch.cat([current_state, curr_action, curr_msg], dim=1)
     x = self.layers(x) 
-    if self.config.residual:
-        x = x + current_state
+    # if self.config.residual:
+    #     x = x + current_state
     return x
 
 # %% ../../nbs/02c_models.dynamics.ipynb 17
