@@ -134,6 +134,7 @@ def train_epoch(self: WMTrainer, epoch):
 
     self.logger.info(f"Device used: {self.device}")
     self.sampler.set_epoch(epoch)
+    sampling_prob = self.get_sampling_prob(epoch)
     for batch_idx, data in enumerate(self.train_loader):
         
         global_step = epoch * len(self.train_loader) + batch_idx
@@ -178,8 +179,6 @@ def train_epoch(self: WMTrainer, epoch):
                         
                     proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
                     msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
-                    
-                    sampling_prob = self.get_sampling_prob(epoch)
 
                     if torch.rand(1).item() < sampling_prob:
                         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
