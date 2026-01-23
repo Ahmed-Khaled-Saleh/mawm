@@ -26,36 +26,55 @@ def init_models(
     device,
     distributed= True
 ):
-    
-    jepa = JEPA(cfg.model, input_dim=(cfg.model.channels, cfg.model.img_size, cfg.model.img_size),
-                action_dim= cfg.model.predictor.action_dim)
-    
-    msg_enc = MSGEnc(num_primitives= 5, latent_dim = 32)
-    comm_module = CommModule(input_channel= jepa.backbone.repr_dim[0])
-    
-    prod = reduce(lambda x, y: x * y, jepa.backbone.repr_dim)
-    proj = JepaProjector(z_input_dim=prod, c_input_dim=msg_enc.latent_dim)
+    model = {}
+    total_params = {}
+    for agent in cfg.env.agents:
+        
+        jepa = JEPA(cfg.model, 
+                    input_dim=(cfg.model.channels, cfg.model.img_size, cfg.model.img_size),
+                    action_dim= cfg.model.predictor.action_dim)
+        
+        msg_enc = MSGEnc(num_primitives= 5,
+                         latent_dim = 32)       
+        
+        proj = JepaProjector(z_channels=32,
+                             c_input_dim=msg_enc.latent_dim)
 
-    jepa.to(device)
-    msg_enc.to(device)
+        jepa.to(device)
+        msg_enc.to(device)
+        proj.to(device)
+
+        def count_parameters(model):
+            return sum(p.numel() for p in model.parameters() if p.requires_grad)
+        
+        logger.info("Agent: %s", agent)
+        logger.info("JEPA Parameters: %d", count_parameters(jepa))
+        logger.info("MSgEncoder Parameters: %d", count_parameters(msg_enc))
+        logger.info("Projector Parameters: %d", count_parameters(proj))
+        logger.info("-"*50)
+        total_params[agent] = count_parameters(jepa) + count_parameters(msg_enc) + count_parameters(proj)
+
+        model[agent] = {}
+        if distributed:
+            model[agent]["jepa"] = DistributedDataParallel(jepa, device_ids = [device], find_unused_parameters=True)
+            model[agent]["msg_enc"] = DistributedDataParallel(msg_enc, device_ids = [device], find_unused_parameters= True)
+            model[agent]["proj"] = DistributedDataParallel(proj, device_ids = [device], find_unused_parameters= True)
+        else:
+            model[agent]["jepa"] = jepa
+            model[agent]["msg_enc"] = msg_enc
+            model[agent]["proj"] = proj
+
+    model['shared'] = {}
+    comm_module = CommModule(input_channel= 32, num_primitives= 5)
     comm_module.to(device)
-    proj.to(device)
-
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
-    logger.info("JEPA Parameters: %d", count_parameters(jepa))
-    logger.info("MSgEncoder Parameters: %d", count_parameters(msg_enc))
     logger.info("CommModule Parameters: %d", count_parameters(comm_module))
-    logger.info("Projector Parameters: %d", count_parameters(proj))
-    total_params = count_parameters(jepa) + count_parameters(msg_enc) + count_parameters(comm_module) + count_parameters(proj)
-    logger.info("Total Parameters: %d", total_params)
+
+    logger.info("Total Parameters: %d", sum(total_params.values()) + count_parameters(comm_module))
+    logger.info("Parameters per Agent: %s", total_params[cfg.env.agents[0]])
 
     if distributed:
-        jepa = DistributedDataParallel(jepa, device_ids = [device], find_unused_parameters=True)
-        msg_enc = DistributedDataParallel(msg_enc, device_ids = [device], find_unused_parameters= True)
-        comm_module = DistributedDataParallel(comm_module, device_ids = [device], find_unused_parameters=True)
-        proj = DistributedDataParallel(proj, device_ids = [device], find_unused_parameters= True)
-
+        model['shared']["comm_module"] = DistributedDataParallel(comm_module, device_ids = [device], find_unused_parameters=True)
+    else:
+        model['shared']['comm_module'] = comm_module
     
-    return jepa, msg_enc, comm_module, proj
+    return model

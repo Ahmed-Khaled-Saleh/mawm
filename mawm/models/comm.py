@@ -15,7 +15,7 @@ from fastcore.utils import *
 from torch import nn
 from torch.nn import functional as F
 
-# %% ../../nbs/02b_models.comm.ipynb 5
+# %% ../../nbs/02b_models.comm.ipynb 6
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,70 +23,81 @@ from einops import rearrange
 
 class MSGEnc(nn.Module):
     def __init__(self, num_primitives=5, latent_dim=32):
+        super().__init__()
         self.latent_dim = latent_dim
-        super().__init__()
+        
         self.net = nn.Sequential(
-            nn.Conv2d(num_primitives, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, stride=2),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(16 * 3 * 3, 64),
-            nn.ReLU(),
-            nn.Linear(64, latent_dim)
-        )
-        # self.net = nn.Linear(num_primitives * 7 * 7, latent_dim)
-        
-    def forward(self, x):
-        if x.dim() == 4:
-            x = x.unsqueeze(1)  # Add time dimension if missing
-        B, T, C, H, W = x.shape
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
-        x = self.net(x) # [B*T, latent_dim]
-        x = rearrange(x, '(b t) d -> b t d', b= B)
-        # x = rearrange(x, 'b t c h w -> b t (c h w)')
-        # x = self.net(x)  # [B, T, latent_dim]
-        return x
-
-
-# %% ../../nbs/02b_models.comm.ipynb 8
-import torch
-import torch.nn as nn
-from einops import rearrange
-class CommModule(nn.Module):
-    def __init__(self, input_channel= 32):
-        super().__init__()
-        
-        # input shape: (batch, input_channel, 15, 15)
-        self.network = nn.Sequential(
-            # First layer: Refine latent features without changing spatial size
-            nn.Conv2d(input_channel, 32, kernel_size=3, stride=1, padding=1),
+            # First block: extract spatial patterns
+            nn.Conv2d(in_channels= num_primitives, out_channels=32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             
-            # Second layer: Downsample from 15x15 to 7x7
-            # Formula: floor((15 + 2*0 - 3) / 2) + 1 = 7
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),
+            # Second block: downsample
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1), # Result: 4x4
             nn.BatchNorm2d(64),
             nn.ReLU(),
             
-            # Final layer: Map to the 5 element channels
-            # We use a 1x1 convolution to reach the target channel count
-            nn.Conv2d(64, 5, kernel_size=1)
+            # Global Average Pool is often better than Flatten + Dense
+            # because it makes the encoder more robust to the grid size
+            nn.AdaptiveAvgPool2d((1, 1)), 
+            nn.Flatten(),
+            
+            # Final projection to the latent dim
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, latent_dim)
+        )
+        
+    def forward(self, x):
+        # Handle B, C, H, W inputs by adding a dummy T=1
+        if x.dim() == 4:
+            x = x.unsqueeze(1) 
+            
+        B, T, C, H, W = x.shape
+        # Merge B and T for processing
+        x = rearrange(x, 'b t c h w -> (b t) c h w')
+        
+        x = self.net(x)
+        
+        # Restore T dimension
+        return rearrange(x, '(b t) d -> b t d', b=B)
+
+# %% ../../nbs/02b_models.comm.ipynb 10
+import torch
+import torch.nn as nn
+from einops import rearrange
+
+class CommModule(nn.Module):
+    def __init__(self, input_channel=32, num_primitives=5):
+        super().__init__()
+        
+        self.network = nn.Sequential(
+            # Layer 1: Keep 15x15, increase depth
+            nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            
+            # Layer 2: Downsample 15x15 -> 7x7
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=0),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            
+            # Layer 3: Final projection to message primitives
+            # We use 3x3 here to give the model a bit more spatial "context" 
+            # when deciding the class of a 7x7 cell.
+            nn.Conv2d(64, num_primitives, kernel_size=1) 
         )
 
     def forward(self, x):
-        if x.dim() == 5:
-            # print("Reshaping input from 5D to 4D for processing.")
-            # Reshape from (batch, time, channels, height, width) to (batch * time, channels, height, width)
+        # Handle 5D [B, T, C, H, W]
+        is_5d = x.dim() == 5
+        if is_5d:
             b, t, c, h, w = x.shape
-            x = x.view(b * t, c, h, w)
-        elif x.dim() == 4:
-            # print("Input shape is already 4D, proceeding without reshaping.")
-            b, c, h, w = x.shape
-        # Output shape: (batch, 5, 7, 7)
-        x =  self.network(x)
-        x = rearrange(x, '(b t) c h w -> b t c h w', b= b, t= t) if 't' in locals() else x
-        return x
-
-
+            x = rearrange(x, 'b t c h w -> (b t) c h w')
+        
+        logits = self.network(x)
+        
+        if is_5d:
+            logits = rearrange(logits, '(b t) c h w -> b t c h w', b=b, t=t)
+            
+        return logits # Returns raw logits for CrossEntropyLoss

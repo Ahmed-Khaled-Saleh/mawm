@@ -232,43 +232,44 @@ class Projector(torch.nn.Module):
     def forward(self, x: torch.Tensor):
         return self.model(x)
 
-# %% ../../nbs/02d_models.misc.ipynb 5
+# %% ../../nbs/02d_models.misc.ipynb 7
 import torch
-from torch import nn
-from einops import rearrange
+import torch.nn as nn
+from einops import rearrange, reduce
+
 class JepaProjector(nn.Module):
-    def __init__(self, z_input_dim=4050, c_input_dim=32):
+    def __init__(self, z_channels=32, c_input_dim=32, latent_dim=2048, output_dim=512):
         super().__init__()
         
+        # Projector for the spatial z-representation
         self.z_projector = nn.Sequential(
-                nn.Linear(z_input_dim, 2048),
-                nn.BatchNorm1d(2048),
-                nn.ReLU(),
-                nn.Linear(2048, 128) # 128 is the 'Shared Latent Space'
-            )
-
-        self.msg_projector = nn.Sequential(
-            nn.Linear(c_input_dim, 2048),
-            nn.BatchNorm1d(2048),
+            nn.Linear(z_channels, latent_dim),
+            nn.LayerNorm(latent_dim),
             nn.ReLU(),
-            nn.Linear(2048, 128) # 128 is the 'Shared Latent Space'
-            )
+            nn.Linear(latent_dim, output_dim)
+        )
+    
+        # Projector for the context/msg c-representation
+        self.msg_projector = nn.Sequential(
+            nn.Linear(c_input_dim, latent_dim),
+            nn.LayerNorm(latent_dim),
+            nn.ReLU(),
+            nn.Linear(latent_dim, output_dim)
+        )
         
     def forward(self, z_sender, C):
-        B, T, D = C.shape
-        z_sender = rearrange(z_sender, 'b t c h w -> (t b) (c h w)')
-        proj_z = self.z_projector(z_sender) # [(T*B, dim=128]
-        proj_z = rearrange(proj_z, '(t b) d -> t b d', b= B)
-
-        C = rearrange(rearrange(C, 'b t d -> t b d'), 't b d -> (t b) d')
-        print(C.shape)
-        proj_c = self.msg_projector(C) # [(T*B, dim=128]
-        proj_c = rearrange(proj_c, '(t b) d -> t b d', b= B)
+        # 1. Pool spatial dimensions: [B, T, 32, 15, 15] -> [B, T, 32]
+        z_pooled = reduce(z_sender, 'b t c h w -> b t c', 'mean')
         
-        return  proj_z[:-1], proj_c[:-1]
+        # 2. Project both to shared space
+        # LayerNorm/Linear handles the last dim, keeping (B, T) intact
+        proj_z = self.z_projector(z_pooled) 
+        proj_c = self.msg_projector(C)
+        
+        return proj_z, proj_c
 
 
-# %% ../../nbs/02d_models.misc.ipynb 16
+# %% ../../nbs/02d_models.misc.ipynb 18
 import torch
 import torch.nn as nn
 class MsgPred(nn.Module):
@@ -297,7 +298,7 @@ class MsgPred(nn.Module):
             return out
         return self.net(z)
 
-# %% ../../nbs/02d_models.misc.ipynb 18
+# %% ../../nbs/02d_models.misc.ipynb 20
 import torch
 import torch.nn as nn
 class ObsPred(nn.Module):

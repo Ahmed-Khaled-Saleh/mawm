@@ -34,11 +34,8 @@ class WMTrainer:
         self.train_loader = train_loader
         self.sampler = sampler
 
-        self.model = model['jepa']
-        self.msg_enc = model['msg_enc']
-        self.comm_module = model['comm_module']
-        self.proj = model['proj']
-
+        self.model = model
+        self.comm_module = model['shared']['comm_module']
         self.optimizer = optimizer
         self.earlystopping = earlystopping
         self.scheduler = scheduler
@@ -47,19 +44,17 @@ class WMTrainer:
         self.verbose = verbose
         self.logger = logger
 
-        self.sigreg = SIGReg().to(self.device)
         self.disSigReg = SIGRegDistributed().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
 
-        # self.anchor_head = nn.Linear(self.cfg.model.jepa.latent_dim, 2).to(self.device)
         self.lambda_ = self.cfg.loss.lambda_
         self.W_H_PRED = self.cfg.loss.W_H_PRED
         self.W_SIM_T = self.cfg.loss.W_SIM_T
 
-        self.schedule_start_epoch = 10  # Start mixing at epoch 10
-        self.schedule_end_epoch = 50    # Fully use predictions by epoch 50
-
+        self.schedule_start_epoch = 5  # Start mixing at epoch 5
+        self.schedule_end_epoch = 20    # Fully use predictions by epoch 20
+    
         self.agents = [f"agent_{i}" for i in range(len(self.cfg.env.agents))]
 
         self.dmpc_dir = os.path.join(self.cfg.log_dir, self.cfg.log_subdir, self.cfg.now)
@@ -68,7 +63,7 @@ class WMTrainer:
 
     
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 6
 @patch
 def criterion(self: WMTrainer, global_step, Z0, Z, actions, msg_target, msg_hat, proj_h, proj_z, mask_t):
 
@@ -105,9 +100,9 @@ def criterion(self: WMTrainer, global_step, Z0, Z, actions, msg_target, msg_hat,
         'msg_pred_loss': msg_pred_loss,
         'idm_loss': idm_loss
     }
-            
+    
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
 @patch
 def get_sampling_prob(self: WMTrainer, epoch):
     if epoch < self.schedule_start_epoch:
@@ -119,7 +114,82 @@ def get_sampling_prob(self: WMTrainer, epoch):
         progress = (epoch - self.schedule_start_epoch) / (self.schedule_end_epoch - self.schedule_start_epoch)
         return progress
 
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
+@patch
+def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
+
+    obs_sender, pos_sender, msg, msg_target, _,_, _ = data
+    obs_sender = obs_sender.to(self.device)
+    pos_sender = pos_sender.to(self.device)
+    msg = msg.to(self.device)
+    msg_target = msg_target.to(self.device)
+
+    if hasattr(self.model, 'module'):
+        obs_enc = self.model[sender]['jepa'].module.backbone
+    else:
+        obs_enc = self.model[sender]['jepa'].backbone
+        
+    msg_enc = self.model[sender]['msg_enc']
+    projector = self.model[sender]['proj']
+
+    self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
+
+    z_sender = obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+    msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+
+    if torch.rand(1).item() < sampling_prob:
+        sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
+        sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
+        probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
+        msg_used = sample + probs - probs.detach()
+
+    else:
+        msg_used = msg  # [B, T, C, H, W]
+    h = msg_enc(msg_used) # [B, T, C, H, W] => [B, T, dim=32]
+    proj_z, proj_h = projector(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
+
+    return msg_hat, msg_target, h, proj_z, proj_h
+
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
+@patch
+def rec_jepa(self: WMTrainer, data, rec, h):
+    obs, pos, _, _, act, _, dones = data
+    mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
+    mask = rearrange(mask, 'b t d-> b (t d)', d=1)
+    mask_t = rearrange(mask, 'b t -> t b')
+
+    if mask.sum() == 0:
+        return  
+
+    obs = obs.to(self.device)
+    pos = pos.to(self.device)
+    act = act.to(self.device)
+
+    self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {act.device}")
+    
+    jepa = self.model[rec]['jepa']
+    Z0, Z = jepa(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
+                                    pos= pos, 
+                                    actions= act, 
+                                    msgs= h, 
+                                    T= act.size(1)-1)
+    
+    # with torch.no_grad():
+    #     # Predict WITHOUT messages
+    #     transition_mask = mask_t[1:] * mask_t[:-1]
+    #     _, Z_no_msg = self.model(x=obs, pos=pos, actions=act, 
+    #                         msgs=torch.zeros_like(h), T=act.size(1)-1)
+    #     sim_loss_no_msg = (Z0[1:] - Z_no_msg[1:]).pow(2).mean(dim=(2,3,4))
+    #     sim_loss_no_msg = (sim_loss_no_msg * transition_mask).sum() / transition_mask.sum().clamp_min(1)
+        
+    #     # Log comparison
+    #     self.logger.info(f"Prediction error WITH msgs: {losses['sim_loss_dynamics'].item():.4f}")
+    #     self.logger.info(f"Prediction error WITHOUT msgs: {sim_loss_no_msg.mean().item():.4f}")
+
+
+    return Z0, Z, act, mask_t, mask, len(obs)
+
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 12
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
@@ -140,95 +210,39 @@ def train_epoch(self: WMTrainer, epoch):
         global_step = epoch * len(self.train_loader) + batch_idx
         self.optimizer.zero_grad()
         batch_loss = 0
-
-        ## Receiver End
+        to_log = {}
+        idm_loss = 0
+        msg_pred_loss = 0
         for rec in self.agents:
-            obs, pos, _, _, act, _, dones = data[rec].values()
-            mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
-            mask = rearrange(mask, 'b t d-> b (t d)', d=1)
-            mask_t = rearrange(mask, 'b t -> t b')
-            
-            agent_loss = 0
-
-            if mask.sum() == 0:
-                continue 
-
-            obs = obs.to(self.device)
-            pos = pos.to(self.device)
-            act = act.to(self.device)
-
-            self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {act.device}")
-
-            #### SENDER End
+            #### SENDER JEPA
             for sender in self.agents:
                 if sender != rec:
-                    obs_sender, pos_sender, msg, msg_target, _,_, _ = data[sender].values()
-
-                    obs_sender = obs_sender.to(self.device)
-                    pos_sender = pos_sender.to(self.device)
-                    msg = msg.to(self.device)
-                    msg_target = msg_target.to(self.device)
-
-                    self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
-
-                    ## Sender JEPA
-                    if hasattr(self.model, 'module'):
-                        z_sender = self.model.module.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-                    else:
-                        z_sender = self.model.backbone(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-                        
-                    msg_hat = self.comm_module(z_sender)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
-
-                    if torch.rand(1).item() < sampling_prob:
-                        sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
-                        sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
-                        probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
-                        msg_used = sample + probs - probs.detach()
-
-                    else:
-                        msg_used = msg  # [B, T, C, H, W]
-                    h = self.msg_enc(msg_used) # [B, T, C, H, W] => [B, T, dim=32]
-                    proj_z, proj_h = self.proj(z_sender, h) #[B, T, c`, h`, w`],[B, T, dim=32] => [T, B, d= 128], [T, B, d= 128]
-
-            ### Reciever JEPA
-            Z0, Z = self.model(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
-                               pos= pos, 
-                               actions= act, 
-                               msgs= h, 
-                               T= act.size(1)-1)
+                    msg_hat, msg_target, h, proj_z, proj_h = self.sender_jepa(data[sender].values(), sender, sampling_prob)
+            
+            ### RECEIVER JEPA
+            Z0, Z, act, mask_t, mask, len_obs = self.rec_jepa(data[rec].values(), rec, h)
             
             losses = self.criterion(global_step, Z0, Z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
-
+            
+            idm_loss += losses['idm_loss'].item()
+            msg_pred_loss += losses['msg_pred_loss'].item()
+            
             if self.verbose:
+                to_log.update({
+                    f'{rec}/sigreg_img': losses['sigreg_img'].item(),
+                    f'{rec}/sim_loss': losses['sim_loss_dynamics'].item(),
+                    f'{rec}/sim_loss_t': losses['sim_loss_t'].item(),
 
-                with torch.no_grad():
-                    # Predict WITHOUT messages
-                    transition_mask = mask_t[1:] * mask_t[:-1]
-                    _, Z_no_msg = self.model(x=obs, pos=pos, actions=act, 
-                                        msgs=torch.zeros_like(h), T=act.size(1)-1)
-                    sim_loss_no_msg = (Z0[1:] - Z_no_msg[1:]).pow(2).mean(dim=(2,3,4))
-                    sim_loss_no_msg = (sim_loss_no_msg * transition_mask).sum() / transition_mask.sum().clamp_min(1)
-                    
-                    # Log comparison
-                    self.logger.info(f"Prediction error WITH msgs: {losses['sim_loss_dynamics'].item():.4f}")
-                    self.logger.info(f"Prediction error WITHOUT msgs: {sim_loss_no_msg.mean().item():.4f}")
-
-                self.writer.write({
-                    f'{rec}/train/sigreg_img': losses['sigreg_img'].item(),
-                    f'{rec}/train/sigreg_msg': losses['sigreg_msg'].item(),
-                    f'{rec}/train/sigreg_obs': losses['sigreg_obs'].item(),
-                    f'{rec}/train/sim_loss': losses['sim_loss_dynamics'].item(),
-                    f'{rec}/train/sim_loss_t': losses['sim_loss_t'].item(),
-                    f'{rec}/train/msg_pred_loss': losses['msg_pred_loss'].item(),
-                    f'{rec}/train/inv_loss_sender': losses['inv_loss_sender'].item(),
-                    f'{rec}/train/idm_loss': losses['idm_loss'].item(),
-                    f'{rec}/train/sim_loss_no_msg': sim_loss_no_msg.item()
+                    f'{sender}/sigreg_msg': losses['sigreg_msg'].item(),
+                    f'{sender}/sigreg_obs': losses['sigreg_obs'].item(),
+                    f'{sender}/inv_loss_sender': losses['inv_loss_sender'].item(),
                 })
-                
+            
             self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
             
-            sender_jepa_loss = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + 25.0 * losses['inv_loss_sender']
-            rec_jepa_loss = self.lambda_ * losses['sim_loss_dynamics'] + 5.0 * losses['sigreg_img']
+            sender_jepa_loss = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
+            rec_jepa_loss =  self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
+            
             comm_mod_loss = self.W_H_PRED * losses['msg_pred_loss']
             smothness_loss = self.W_SIM_T * losses['sim_loss_t']
             idm_loss = self.cfg.loss.idm.coeff * losses['idm_loss']
@@ -245,13 +259,20 @@ def train_epoch(self: WMTrainer, epoch):
             num_valid = mask.sum().item()
             total_running_loss += agent_loss.item() * num_valid
             total_valid_steps += num_valid
+        
+        if self.verbose:
+            to_log.update({
+                'idm_loss': idm_loss,
+                'msg_pred_loss': msg_pred_loss
+            })
+
+            self.writer.write(to_log)
             
         loss = batch_loss
-        # loss.backward()
         self.optimizer.step()
 
         if batch_idx % 20 == 0:
-            self.logger.info(f'Train Epoch: {epoch} [{batch_idx * len(obs)}/{len(self.train_loader.dataset)} '
+            self.logger.info(f'Train Epoch: {epoch} [{batch_idx * len(len_obs)}/{len(self.train_loader.dataset)} '
                   f'({100. * batch_idx / len(self.train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
     final_epoch_loss = (total_running_loss / total_valid_steps) / len(self.agents) if total_valid_steps > 0 else 0.0
@@ -286,16 +307,34 @@ def fit(self: WMTrainer):
             def get_state(m):
                 return m.module.state_dict() if hasattr(m, 'module') else m.state_dict()
             
+            # save_dict = {
+            #     'epoch': epoch,
+            #     'jepa': self.model.state_dict(),#get_state(self.model),
+            #     'msg_enc':self.msg_enc.state_dict(),#get_state(self.msg_enc),
+            #     'comm_module': self.comm_module.state_dict(),#get_state(self.comm_module),
+            #     'proj': self.proj.state_dict(),#get_state(self.proj),
+            #     'train_loss': train_loss,
+            #     'optimizer': self.optimizer.state_dict(),
+            #     "lr": lr,
+            # }
+
             save_dict = {
                 'epoch': epoch,
-                'jepa': self.model.state_dict(),#get_state(self.model),
-                'msg_enc':self.msg_enc.state_dict(),#get_state(self.msg_enc),
-                'comm_module': self.comm_module.state_dict(),#get_state(self.comm_module),
-                'proj': self.proj.state_dict(),#get_state(self.proj),
+                'model': {agent: { 'jepa': get_state(self.model[agent]['jepa']),
+                                  'msg_enc': get_state(self.model[agent]['msg_enc']),
+                                  'proj': get_state(self.model[agent]['proj'])} for agent in self.agents},
+                'comm_module': get_state(self.comm_module),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
                 "lr": lr,
             }
+            save_dict.update(
+                {"shared": {
+                    'comm_module': get_state(self.comm_module),
+                    }
+                }
+            )
+            
             try:
                 torch.save(save_dict, path)
                 self.logger.info(f"Successfully saved checkpoint to {path}")

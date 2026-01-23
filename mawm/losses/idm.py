@@ -91,7 +91,7 @@ def __call__(self: IDMLoss, embeddings, predictions, actions):
     
     repr_input = rearrange(repr_input, "t b ... -> (t b) ...")
     actions_pred = self.action_predictor(repr_input)
-
+    print(actions_pred.shape, actions.shape)
     action_loss = F.cross_entropy(
         actions_pred,
         actions.to(actions_pred.device),

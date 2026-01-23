@@ -70,9 +70,9 @@ def main(cfg):
     start_epoch = 0
     dist_sampler.set_epoch(start_epoch)
 
-    jepa, msg_enc, comm_module, proj = init_models(cfg, device= torch.device(f'cuda:{local_rank}'))
+    model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'))
 
-    optimizer = init_opt(cfg, *[jepa, msg_enc, comm_module, proj])
+    optimizer = init_opt(cfg, model)
 
     scheduler = Scheduler(
         schedule=cfg.optimizer.scheduler.name,
@@ -82,13 +82,6 @@ def main(cfg):
         optimizer=optimizer,
         batch_size=cfg.data.batch_size,
     )
-    
-    model = {
-         'jepa': jepa,
-         'msg_enc': msg_enc,
-         'comm_module': comm_module,
-         'proj': proj
-    }
 
     logger.info(f"Starting training... from {local_rank}")
     verbose = dist.get_rank() == 0  # print only on global_rank==0
@@ -96,6 +89,7 @@ def main(cfg):
         writer = WandbWriter(cfg)
     else:
         writer = None
+        
     trainer = init_trainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                            device= local_rank, earlystopping= None, scheduler= scheduler,
                            writer= writer, verbose= verbose, logger = logger)
