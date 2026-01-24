@@ -128,7 +128,7 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
     msg = msg.to(self.device)
     msg_target = msg_target.to(self.device)
 
-    if hasattr(self.model, 'module'):
+    if hasattr(self.model[sender]['jepa'], 'module'):
         obs_enc = self.model[sender]['jepa'].module.backbone
     else:
         obs_enc = self.model[sender]['jepa'].backbone
