@@ -81,7 +81,7 @@ def forward(
 
     return z0, Z
 
-# %% ../../nbs/02f_models.jepa.ipynb 19
+# %% ../../nbs/02f_models.jepa.ipynb 21
 @patch
 def update_ema(self: JEPA):
     if self.config.momentum > 0:
