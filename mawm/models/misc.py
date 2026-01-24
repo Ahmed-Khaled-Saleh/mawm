@@ -264,7 +264,9 @@ class JepaProjector(nn.Module):
         # 2. Project both to shared space
         # LayerNorm/Linear handles the last dim, keeping (B, T) intact
         proj_z = self.z_projector(z_pooled) 
+        proj_z = rearrange(proj_z, 'b t d -> t b d')  # [T, B, D]
         proj_c = self.msg_projector(C)
+        proj_c = rearrange(proj_c, 'b t d -> t b d')  # [T, B, D]
         
         return proj_z, proj_c
 
