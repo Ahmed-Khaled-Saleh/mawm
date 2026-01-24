@@ -136,7 +136,7 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
 
     z = obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-    h_target = self.msg_enc(msg_target)
+    h_target = self.msg_enc(msg_target.to(z.dtype))  # [B, T, C, H, W] => [B, T, dim=32]
     proj_z, proj_h = self.proj(z, h_target) # True JEPA alignment
 
     msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
