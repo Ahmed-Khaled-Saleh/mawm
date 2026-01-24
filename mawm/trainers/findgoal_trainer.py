@@ -35,9 +35,6 @@ class WMTrainer:
         self.sampler = sampler
 
         self.model = model
-        self.comm_module = model['shared']['comm_module']
-        self.msg_enc = model['shared']['msg_enc']
-        self.proj = model['shared']['proj']
         
         self.optimizer = optimizer
         self.earlystopping = earlystopping
@@ -135,17 +132,21 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
         
     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
 
-    z = obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-    h_target = self.msg_enc(msg)  # [B, T, C, H, W] => [B, T, dim=32]
-    proj_z, proj_h = self.proj(z, h_target) # True JEPA alignment
+    comm_module = self.model[sender]['comm_module']
+    msg_enc = self.model[sender]['msg_enc']
+    proj = self.model[sender]['proj']
 
-    msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+    z = obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+    h_target = msg_enc(msg)  # [B, T, C, H, W] => [B, T, dim=32]
+    proj_z, proj_h = proj(z, h_target) # True JEPA alignment
+
+    msg_hat = comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
     if torch.rand(1).item() < sampling_prob:
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
         msg_used = sample + probs - probs.detach() # [B, T, C, H, W] `one-hot with straight-through`
-        h_for_receiver = self.msg_enc(msg_used.to(probs.dtype)) # [B, T, C, H, W] => [B, T, dim=32]
+        h_for_receiver = msg_enc(msg_used.to(probs.dtype)) # [B, T, C, H, W] => [B, T, dim=32]
 
     else:
         msg_used = msg  # [B, T, C, H, W]
@@ -255,10 +256,9 @@ CHECKPOINT_FREQ = 1
 def fit(self: WMTrainer):
     for agent in self.agents:
         self.model[agent]['jepa'].train()
-        
-    self.msg_enc.train()
-    self.comm_module.train()
-    self.proj.train()
+        self.model[agent]['msg_enc'].train()
+        self.model[agent]['comm_module'].train()
+        self.model[agent]['proj'].train()
 
     latest_file = "latest.pt"
     folder = self.dmpc_dir
@@ -282,9 +282,6 @@ def fit(self: WMTrainer):
             
             save_dict = {
                 'epoch': epoch,
-                'msg_enc': get_state(self.msg_enc),
-                'comm_module': get_state(self.comm_module),
-                'proj': get_state(self.proj),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
                 "lr": lr,
@@ -292,6 +289,12 @@ def fit(self: WMTrainer):
             
             jepas_dict = {f"jepa_{agent}": get_state(self.model[agent]['jepa']) for agent in self.agents}
             save_dict.update(jepas_dict)
+            comms_dict = {f"comm_module_{agent}": get_state(self.model[agent]['comm_module']) for agent in self.agents}
+            save_dict.update(comms_dict)
+            msg_encs_dict = {f"msg_enc_{agent}": get_state(self.model[agent]['msg_enc']) for agent in self.agents}
+            save_dict.update(msg_encs_dict)
+            projs_dict = {f"proj_{agent}": get_state(self.model[agent]['proj']) for agent in self.agents}
+            save_dict.update(projs_dict)
             
             try:
                 torch.save(save_dict, path)
