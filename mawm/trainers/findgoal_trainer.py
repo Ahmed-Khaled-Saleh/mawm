@@ -153,7 +153,7 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
     
     return msg_hat, msg_target, h_for_receiver, proj_z, proj_h
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 12
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 @patch
 def rec_jepa(self: WMTrainer, data, rec, h):
     obs, pos, _, _, act, _, dones = data
@@ -179,16 +179,11 @@ def rec_jepa(self: WMTrainer, data, rec, h):
     
     return z0, z, act, mask_t, mask, len(obs)
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 14
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 13
 from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
 def train_epoch(self: WMTrainer, epoch):
-    for agent in self.agents:
-        self.model[agent].train()
-    self.msg_enc.train()
-    self.comm_module.train()
-    self.proj.train()
     
     total_running_loss = 0.0
     total_valid_steps = 0
@@ -250,11 +245,17 @@ def train_epoch(self: WMTrainer, epoch):
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 15
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 14
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
 def fit(self: WMTrainer):
+    for agent in self.agents:
+        self.model[agent]['jepa'].train()
+        
+    self.msg_enc.train()
+    self.comm_module.train()
+    self.proj.train()
 
     latest_file = "latest.pt"
     folder = self.dmpc_dir
