@@ -211,6 +211,7 @@ def train_epoch(self: WMTrainer, epoch):
                 )
                 
                 losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
+                self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
                 
                 s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
                 r_jepa = self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
@@ -219,6 +220,8 @@ def train_epoch(self: WMTrainer, epoch):
                              self.cfg.loss.idm.coeff * losses['idm_loss'])
 
                 pair_loss = s_jepa + r_jepa + task_loss
+
+                self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
                 
                 scaled_loss = pair_loss / num_pairs
                 scaled_loss.backward()
