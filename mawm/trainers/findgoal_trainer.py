@@ -88,10 +88,10 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     # SENDER LOSSES
     msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B, T, 5, 7, 7], targe: [B, T, 7, 7] with long() dtype.
 
-    sigreg_msg = self.disSigReg(proj_h, global_step= global_step)
-    sigreg_obs = self.disSigReg(proj_z, global_step= global_step)
+    sigreg_msg = self.disSigReg(proj_h[:-1], global_step= global_step)
+    sigreg_obs = self.disSigReg(proj_z[:-1], global_step= global_step)
 
-    inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
+    inv_loss_sender = (proj_z[:-1] - proj_h[:-1]).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
     inv_loss_sender = (inv_loss_sender * transition_mask).sum() / transition_mask.sum().clamp_min(1) 
 
     return {
@@ -144,7 +144,7 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
-        msg_used = sample + probs - probs.detach() # [B, T, C, H, W] one-hot with straight-through
+        msg_used = sample + probs - probs.detach() # [B, T, C, H, W] `one-hot with straight-through`
         h_for_receiver = self.msg_enc(msg_used.to(probs.dtype)) # [B, T, C, H, W] => [B, T, dim=32]
 
     else:
