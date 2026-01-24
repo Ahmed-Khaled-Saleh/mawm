@@ -184,7 +184,8 @@ from ..models.utils import flatten_conv_output
 from einops import rearrange
 @patch
 def train_epoch(self: WMTrainer, epoch):
-    self.model.train()
+    for agent in self.agents:
+        self.model[agent].train()
     self.msg_enc.train()
     self.comm_module.train()
     self.proj.train()
