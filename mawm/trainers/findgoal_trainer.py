@@ -85,8 +85,8 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     # SENDER LOSSES
     msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B, T, 5, 7, 7], targe: [B, T, 7, 7] with long() dtype.
 
-    sigreg_msg = self.disSigReg(proj_h[:-1], global_step= global_step)
-    sigreg_obs = self.disSigReg(proj_z[:-1], global_step= global_step)
+    sigreg_msg = self.disSigReg(proj_h[:1], global_step= global_step)
+    sigreg_obs = self.disSigReg(proj_z[:1], global_step= global_step)
 
     inv_loss_sender = (proj_z[:-1] - proj_h[:-1]).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
     inv_loss_sender = (inv_loss_sender * transition_mask).sum() / transition_mask.sum().clamp_min(1) 
