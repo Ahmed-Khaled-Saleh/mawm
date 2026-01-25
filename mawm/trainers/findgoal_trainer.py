@@ -339,7 +339,7 @@ def fit(self: WMTrainer):
                 'proj': get_state(self.proj),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
-                "lr": lr,
+                # "lr": lr,
             }
             
             try:
