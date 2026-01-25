@@ -29,12 +29,12 @@ class MSGEnc(nn.Module):
         self.net = nn.Sequential(
             # First block: extract spatial patterns
             nn.Conv2d(in_channels= num_primitives, out_channels=32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
+            nn.GroupNorm(8, 32),
             nn.ReLU(),
             
             # Second block: downsample
             nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1), # Result: 4x4
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             
             # Global Average Pool is often better than Flatten + Dense
@@ -74,12 +74,12 @@ class CommModule(nn.Module):
         self.network = nn.Sequential(
             # Layer 1: Keep 15x15, increase depth
             nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             
             # Layer 2: Downsample 15x15 -> 7x7
             nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=0),
-            nn.BatchNorm2d(64),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             
             # Layer 3: Final projection to message primitives
