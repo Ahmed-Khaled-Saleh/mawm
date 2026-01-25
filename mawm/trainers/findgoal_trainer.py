@@ -219,9 +219,9 @@ def train_epoch(self: WMTrainer, epoch):
                              self.cfg.loss.idm.coeff * losses['idm_loss'])
 
                 pair_loss = s_jepa + r_jepa + task_loss
-                scaled_loss = pair_loss / num_pairs
+                # scaled_loss = pair_loss / num_pairs
                 
-                scaled_loss.backward()
+                pair_loss.backward()
                 
                 num_valid = mask.sum().item()
                 total_running_loss += pair_loss.item() * num_valid
@@ -231,6 +231,12 @@ def train_epoch(self: WMTrainer, epoch):
                     for k, v in losses.items():
                         batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
  
+        torch.nn.utils.clip_grad_norm_(
+            [*self.jepa.parameters(), *self.obs_enc.parameters(), 
+            *self.msg_enc.parameters(), *self.comm_module.parameters(), 
+            *self.proj.parameters()],
+            max_norm=1.0  # Adjust this value
+        )
         self.optimizer.step()
 
         if self.verbose:
