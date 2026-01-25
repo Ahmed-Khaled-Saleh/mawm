@@ -197,7 +197,14 @@ def train_epoch(self: WMTrainer, epoch):
         decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
-
+        if self.verbose:
+            # Check data stats (first batch only)
+            if batch_idx == 0:
+                obs, pos, msg, msg_target, act, _, dones = data[self.agents[0]].values()
+                self.logger.info(f"Input data stats:")
+                self.logger.info(f"  obs: min={obs.min():.3f}, max={obs.max():.3f}, mean={obs.mean():.3f}, std={obs.std():.3f}")
+                self.logger.info(f"  msg: min={msg.min():.3f}, max={msg.max():.3f}, mean={msg.mean():.3f}")
+            
         for rec in self.agents:
             for sender in self.agents:
                 if sender == rec: continue
@@ -209,7 +216,14 @@ def train_epoch(self: WMTrainer, epoch):
                 z0, z, act, mask_t, mask, len_obs = self.rec_jepa(
                     data[rec].values(), h
                 )
-                
+
+                if self.verbose:
+                    # Check for NaNs in embeddings
+                    if torch.isnan(z0).any():
+                        self.logger.error(f"NaN detected in z0!")
+                    if torch.isnan(z).any():
+                        self.logger.error(f"NaN detected in z!")
+                    
                 losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
                 
                 s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
@@ -219,6 +233,18 @@ def train_epoch(self: WMTrainer, epoch):
                              self.cfg.loss.idm.coeff * losses['idm_loss'])
 
                 pair_loss = s_jepa + r_jepa + task_loss
+                if self.verbose:
+                    if batch_idx % 5 == 0:
+                        self.logger.info(f"\nBatch {batch_idx}, Pair {sender}->{rec}:")
+                        self.logger.info(f"  Individual losses:")
+                        for k, v in losses.items():
+                            self.logger.info(f"    {k}: {v.item():.4f}")
+                        self.logger.info(f"  Combined losses:")
+                        self.logger.info(f"    s_jepa: {s_jepa.item():.4f}")
+                        self.logger.info(f"    r_jepa: {r_jepa.item():.4f}")
+                        self.logger.info(f"    task_loss: {task_loss.item():.4f}")
+                        self.logger.info(f"    TOTAL pair_loss: {pair_loss.item():.4f}")
+
                 # scaled_loss = pair_loss / num_pairs
                 
                 pair_loss.backward()
@@ -230,7 +256,7 @@ def train_epoch(self: WMTrainer, epoch):
                 if self.verbose:
                     for k, v in losses.items():
                         batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
- 
+    
         torch.nn.utils.clip_grad_norm_(
             [*self.jepa.parameters(), *self.obs_enc.parameters(), 
             *self.msg_enc.parameters(), *self.comm_module.parameters(), 
@@ -270,6 +296,11 @@ def fit(self: WMTrainer):
     for epoch in range(1, self.cfg.epochs + 1):
         self.logger.info("Epoch %d" % (epoch))
         lr = self.scheduler.adjust_learning_rate(epoch)
+        if self.verbose:
+            self.logger.info(f"\n{'='*80}")
+            self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
+            self.logger.info(f"{'='*80}")
+            
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)
         

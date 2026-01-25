@@ -77,10 +77,10 @@ class SIGRegFunctional(torch.nn.Module):
         self.scale_factor = scale_factor
         
         # Standard integration setup (-5 to 5)
-        t = torch.linspace(-5, 5, knots, dtype=torch.float32)
-        dt = 10 / (knots - 1)
+        t = torch.linspace(0, 3, knots, dtype=torch.float32)
+        dt = 3 / (knots - 1)
         weights = torch.full((knots,), dt, dtype=torch.float32)
-        weights[0], weights[-1] = dt / 2, dt / 2
+        weights[[0, -1]] = dt
         phi = torch.exp(-t.square() / 2.0)
         
         self.register_buffer("t", t)
