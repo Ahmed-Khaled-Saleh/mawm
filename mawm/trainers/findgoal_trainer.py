@@ -196,6 +196,7 @@ def train_epoch(self: WMTrainer, epoch):
         decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
+        batch_total_loss = 0.0
 
         for rec in self.agents:
             for sender in self.agents:
@@ -223,7 +224,7 @@ def train_epoch(self: WMTrainer, epoch):
                 self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
                 
                 scaled_loss = pair_loss / num_pairs
-                scaled_loss.backward()
+                batch_total_loss += scaled_loss
 
                 num_valid = mask.sum().item()
                 total_running_loss += pair_loss.item() * num_valid
@@ -231,8 +232,9 @@ def train_epoch(self: WMTrainer, epoch):
 
                 if self.verbose:
                     for k, v in losses.items():
-                        batch_log_accumulator[f'{rec}_as_rec/{k}'] = v.item()
+                        batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
 
+        batch_total_loss.backward()
         self.optimizer.step()
 
         # if batch_idx % 2 == 0:
@@ -242,7 +244,7 @@ def train_epoch(self: WMTrainer, epoch):
             processed_samples = batch_idx * len_obs 
             self.logger.info(f'Train Epoch: {epoch} [{processed_samples}/{len(self.train_loader.dataset)} '
                              f'({100. * batch_idx / len(self.train_loader):.0f}%)]\t'
-                             f'Pair Avg Loss: {pair_loss.item():.64f}')
+                             f'Pair Avg Loss: {pair_loss.item():.4f}')
 
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
