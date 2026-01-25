@@ -121,7 +121,7 @@ def get_sampling_prob(self: WMTrainer, epoch):
 
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 @patch
-def sender_jepa(self: WMTrainer, data, sampling_prob):
+def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 
     obs_sender, pos_sender, msg, msg_target, _,_, _ = data
     obs_sender = obs_sender.to(self.device)
@@ -137,7 +137,7 @@ def sender_jepa(self: WMTrainer, data, sampling_prob):
     proj_z, proj_h = self.proj(z, h_target) # True JEPA alignment
 
     msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
-    if torch.rand(1).item() < sampling_prob:
+    if decision_rand < sampling_prob:
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
@@ -187,6 +187,8 @@ def train_epoch(self: WMTrainer, epoch):
 
     self.sampler.set_epoch(epoch) if epoch > 0 else None
     sampling_prob = self.get_sampling_prob(epoch)
+    g = torch.Generator().manual_seed(epoch + batch_idx) 
+    decision_rand = torch.rand(1, generator=g).item()
 
     for batch_idx, data in enumerate(self.train_loader):
         global_step = epoch * len(self.train_loader) + batch_idx
@@ -199,7 +201,7 @@ def train_epoch(self: WMTrainer, epoch):
                 if sender == rec: continue
                 
                 msg_hat, msg_target, h, proj_z, proj_h = self.sender_jepa(
-                    data[sender].values(), sampling_prob
+                    data[sender].values(), sampling_prob, decision_rand
                 )
                 
                 z0, z, act, mask_t, mask, len_obs = self.rec_jepa(
