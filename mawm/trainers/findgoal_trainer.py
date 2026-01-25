@@ -239,26 +239,26 @@ def train_epoch(self: WMTrainer, epoch):
                     self.logger.info(f"  {name}: version={param._version}")
                 
                 # Check if any intermediate tensors have unexpected versions
-                if self.verbose:
-                    self.logger.info(f"Loss tensor versions:")
-                    self.logger.info(f"  scaled_loss: {scaled_loss._version if hasattr(scaled_loss, '_version') else 'N/A'}")
-                    self.logger.info(f"  z0: {z0._version if hasattr(z0, '_version') else 'N/A'}")
-                    self.logger.info(f"  z: {z._version if hasattr(z, '_version') else 'N/A'}")
-                    self.logger.info(f"  mask_t: {mask_t._version if hasattr(mask_t, '_version') else 'N/A'}")
+                # if self.verbose:
+                self.logger.info(f"Loss tensor versions:")
+                self.logger.info(f"  scaled_loss: {scaled_loss._version if hasattr(scaled_loss, '_version') else 'N/A'}")
+                self.logger.info(f"  z0: {z0._version if hasattr(z0, '_version') else 'N/A'}")
+                self.logger.info(f"  z: {z._version if hasattr(z, '_version') else 'N/A'}")
+                self.logger.info(f"  mask_t: {mask_t._version if hasattr(mask_t, '_version') else 'N/A'}")
+            
+                try:
+                    self.logger.info(f"Calling backward for pair {pair_idx}...")
+                    scaled_loss.backward()
+                    self.logger.info(f"Backward successful for pair {pair_idx}")
+                except RuntimeError as e:
+                    self.logger.error(f"ERROR during backward for pair {pair_idx}: {e}")
                     
-                    try:
-                        self.logger.info(f"Calling backward for pair {pair_idx}...")
-                        scaled_loss.backward()
-                        self.logger.info(f"Backward successful for pair {pair_idx}")
-                    except RuntimeError as e:
-                        self.logger.error(f"ERROR during backward for pair {pair_idx}: {e}")
-                        
-                        # Print detailed info about all tensors in the computation graph
-                        self.logger.error("Parameter versions at error:")
-                        for name, param in self.jepa.named_parameters():
-                            self.logger.error(f"  {name}: version={param._version}")
-                        
-                        raise e
+                    # Print detailed info about all tensors in the computation graph
+                    self.logger.error("Parameter versions at error:")
+                    for name, param in self.jepa.named_parameters():
+                        self.logger.error(f"  {name}: version={param._version}")
+                    
+                    raise e
                 
                 num_valid = mask.sum().item()
                 total_running_loss += pair_loss.item() * num_valid
