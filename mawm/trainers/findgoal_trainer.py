@@ -138,6 +138,9 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 
     msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
     if decision_rand < sampling_prob:
+        # with torch.no_grad():
+        #     sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)
+        #     sample = rearrange(sample, 'b t h w c -> b t c h w')
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
@@ -175,19 +178,15 @@ def rec_jepa(self: WMTrainer, data, h):
     
     return z0, z, act, mask_t, mask, len(obs)
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 13
-from ..models.utils import flatten_conv_output
-from einops import rearrange
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 14
 @patch
 def train_epoch(self: WMTrainer, epoch):
-    
     total_running_loss = 0.0
     total_valid_steps = 0
-    num_pairs = len(self.agents) * (len(self.agents) - 1) # Equals 2 for two agents
+    num_pairs = len(self.agents) * (len(self.agents) - 1)
 
     self.sampler.set_epoch(epoch) if epoch > 0 else None
     sampling_prob = self.get_sampling_prob(epoch)
-   
 
     for batch_idx, data in enumerate(self.train_loader):
         global_step = epoch * len(self.train_loader) + batch_idx
@@ -196,8 +195,10 @@ def train_epoch(self: WMTrainer, epoch):
         decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
-        batch_total_loss = 0.0
-
+        
+        # Store all pair outputs first
+        pair_outputs = []
+        
         for rec in self.agents:
             for sender in self.agents:
                 if sender == rec: continue
@@ -210,46 +211,76 @@ def train_epoch(self: WMTrainer, epoch):
                     data[rec].values(), h
                 )
                 
-                losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
-                self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
-                
-                s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
-                r_jepa = self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
-                task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
-                             self.W_SIM_T * losses['sim_loss_t'] + 
-                             self.cfg.loss.idm.coeff * losses['idm_loss'])
+                pair_outputs.append({
+                    'sender': sender,
+                    'rec': rec,
+                    'z0': z0,
+                    'z': z,
+                    'act': act,
+                    'mask_t': mask_t,
+                    'mask': mask,
+                    'msg_target': msg_target,
+                    'msg_hat': msg_hat,
+                    'proj_h': proj_h,
+                    'proj_z': proj_z,
+                    'len_obs': len_obs
+                })
+        
+        # Now compute all losses and accumulate
+        batch_total_loss = 0.0
+        
+        for pair_data in pair_outputs:
+            losses = self.criterion(
+                global_step, 
+                pair_data['z0'], 
+                pair_data['z'], 
+                pair_data['act'], 
+                pair_data['msg_target'], 
+                pair_data['msg_hat'], 
+                pair_data['proj_h'], 
+                pair_data['proj_z'], 
+                pair_data['mask_t']
+            )
+            
+            self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
+            
+            s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
+            r_jepa = self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
+            task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
+                         self.W_SIM_T * losses['sim_loss_t'] + 
+                         self.cfg.loss.idm.coeff * losses['idm_loss'])
 
-                pair_loss = s_jepa + r_jepa + task_loss
+            pair_loss = s_jepa + r_jepa + task_loss
+            
+            self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
+            
+            scaled_loss = pair_loss / num_pairs
+            batch_total_loss += scaled_loss
 
-                self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
-                
-                scaled_loss = pair_loss / num_pairs
-                scaled_loss.backward()
-                # batch_total_loss += scaled_loss
+            num_valid = pair_data['mask'].sum().item()
+            total_running_loss += pair_loss.item() * num_valid
+            total_valid_steps += num_valid
 
-                num_valid = mask.sum().item()
-                total_running_loss += pair_loss.item() * num_valid
-                total_valid_steps += num_valid
+            if self.verbose:
+                for k, v in losses.items():
+                    batch_log_accumulator[f"pair_{pair_data['sender']}_to_{pair_data['rec']}/{k}"] = v.item()
 
-                if self.verbose:
-                    for k, v in losses.items():
-                        batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
-
+        # Single backward pass
+        batch_total_loss.backward()
         self.optimizer.step()
 
-        # if batch_idx % 2 == 0:
         if self.verbose:
             self.writer.write(batch_log_accumulator)
             
             processed_samples = batch_idx * len_obs 
             self.logger.info(f'Train Epoch: {epoch} [{processed_samples}/{len(self.train_loader.dataset)} '
                              f'({100. * batch_idx / len(self.train_loader):.0f}%)]\t'
-                             f'Pair Avg Loss: {pair_loss.item():.4f}')
+                             f'Batch Total Loss: {batch_total_loss.item():.4f}')
 
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 14
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 15
 import wandb
 CHECKPOINT_FREQ = 1
 @patch

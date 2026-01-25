@@ -59,8 +59,8 @@ model:
 
 loss:
   lambda_: 0.2
-  W_H_PRED: 2.0
-  W_SIM_T: 50
+  W_H_PRED: 1.0
+  W_SIM_T: 1.0
   projector: id
   idm:
     action_dim: 5
