@@ -18,7 +18,7 @@ import pandas as pd
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 5
 from ..models.utils import save_checkpoint
 from ..loggers.base import AverageMeter
-from ..losses.sigreg import SIGReg, SIGRegDistributed
+from ..losses.sigreg import SIGRegFunctional
 from ..losses.idm import IDMLoss    
 from ..models.utils import flatten_conv_output
 from einops import rearrange
@@ -34,7 +34,11 @@ class WMTrainer:
         self.train_loader = train_loader
         self.sampler = sampler
 
-        self.model = model
+        self.jepa = model['rec']['jepa']
+        self.obs_enc = model["send"]["obs_enc"]
+        self.msg_enc = model["send"]["msg_enc"]
+        self.proj = model["send"]["proj"]
+        self.comm_module = model["send"]["comm_module"]
         
         self.optimizer = optimizer
         self.earlystopping = earlystopping
@@ -44,7 +48,7 @@ class WMTrainer:
         self.verbose = verbose
         self.logger = logger
 
-        self.disSigReg = SIGRegDistributed().to(self.device)
+        self.sigreg = SIGRegFunctional().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
 
@@ -67,8 +71,8 @@ class WMTrainer:
 @patch
 def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat, proj_h, proj_z, mask_t):
 
-    flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, d]
-    sigreg_img = self.disSigReg(flat_encodings[:1], global_step= global_step)
+    flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
+    sigreg_img = self.sigreg(flat_encodings, global_step= global_step, mask= mask_t)
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (z0[1:] - z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
@@ -81,15 +85,15 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
         sim_loss_t = torch.zeros([1], device=self.device)
     
     idm_loss = self.idm(embeddings= z0, predictions= z, actions= actions)
-
+    
     # SENDER LOSSES
     msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B, T, 5, 7, 7], targe: [B, T, 7, 7] with long() dtype.
 
-    sigreg_msg = self.disSigReg(proj_h[:1], global_step= global_step)
-    sigreg_obs = self.disSigReg(proj_z[:1], global_step= global_step)
+    sigreg_msg = self.sigreg(proj_h, global_step= global_step, mask= mask_t)
+    sigreg_obs = self.sigreg(proj_z, global_step= global_step, mask= mask_t)
 
-    inv_loss_sender = (proj_z[:-1] - proj_h[:-1]).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
-    inv_loss_sender = (inv_loss_sender * transition_mask).sum() / transition_mask.sum().clamp_min(1) 
+    inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
+    inv_loss_sender = (inv_loss_sender * mask_t).sum() / mask_t.sum().clamp_min(1) 
 
     return {
         'sigreg_img': sigreg_img,
@@ -117,7 +121,7 @@ def get_sampling_prob(self: WMTrainer, epoch):
 
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 @patch
-def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
+def sender_jepa(self: WMTrainer, data, sampling_prob):
 
     obs_sender, pos_sender, msg, msg_target, _,_, _ = data
     obs_sender = obs_sender.to(self.device)
@@ -125,28 +129,20 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
     msg = msg.to(self.device)
     msg_target = msg_target.to(self.device)
 
-    if hasattr(self.model[sender]['jepa'], 'module'):
-        obs_enc = self.model[sender]['jepa'].module.backbone
-    else:
-        obs_enc = self.model[sender]['jepa'].backbone
         
     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
 
-    comm_module = self.model[sender]['comm_module']
-    msg_enc = self.model[sender]['msg_enc']
-    proj = self.model[sender]['proj']
+    z = self.obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
+    h_target = self.msg_enc(msg)  # [B, T, C, H, W] => [B, T, dim=32]
+    proj_z, proj_h = self.proj(z, h_target) # True JEPA alignment
 
-    z = obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
-    h_target = msg_enc(msg)  # [B, T, C, H, W] => [B, T, dim=32]
-    proj_z, proj_h = proj(z, h_target) # True JEPA alignment
-
-    msg_hat = comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+    msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
     if torch.rand(1).item() < sampling_prob:
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
         msg_used = sample + probs - probs.detach() # [B, T, C, H, W] `one-hot with straight-through`
-        h_for_receiver = msg_enc(msg_used.to(probs.dtype)) # [B, T, C, H, W] => [B, T, dim=32]
+        h_for_receiver = self.msg_enc(msg_used.to(probs.dtype)) # [B, T, C, H, W] => [B, T, dim=32]
 
     else:
         msg_used = msg  # [B, T, C, H, W]
@@ -156,7 +152,7 @@ def sender_jepa(self: WMTrainer, data, sender, sampling_prob):
 
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 @patch
-def rec_jepa(self: WMTrainer, data, rec, h):
+def rec_jepa(self: WMTrainer, data, h):
     obs, pos, _, _, act, _, dones = data
     mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
     mask = rearrange(mask, 'b t d-> b (t d)', d=1)
@@ -171,12 +167,11 @@ def rec_jepa(self: WMTrainer, data, rec, h):
 
     self.logger.info(f"device used for main agent data: {mask_t.device} {obs.device}, {act.device}")
     
-    jepa = self.model[rec]['jepa']
-    z0, z = jepa(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
-                 pos= pos,
-                 actions= act,
-                 msgs= h,
-                 T= act.size(1)-1)
+    z0, z = self.jepa(x= obs, #[B, T, c, h, w] =>  [T, B, c, h, w]
+                      pos= pos,
+                      actions= act,
+                      msgs= h,
+                      T= act.size(1)-1)
     
     return z0, z, act, mask_t, mask, len(obs)
 
@@ -204,11 +199,11 @@ def train_epoch(self: WMTrainer, epoch):
                 if sender == rec: continue
                 
                 msg_hat, msg_target, h, proj_z, proj_h = self.sender_jepa(
-                    data[sender].values(), sender, sampling_prob
+                    data[sender].values(), sampling_prob
                 )
                 
                 z0, z, act, mask_t, mask, len_obs = self.rec_jepa(
-                    data[rec].values(), rec, h
+                    data[rec].values(), h
                 )
                 
                 losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)

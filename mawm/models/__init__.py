@@ -14,6 +14,7 @@ import torch
 from functools import reduce
 from torch.nn.parallel import DistributedDataParallel
 from .jepa import JEPA
+from .vision import MeNet6
 from .comm import MSGEnc, CommModule
 from .misc import JepaProjector
 import logging
@@ -22,57 +23,60 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
 def init_models(
-    cfg,
-    device,
-    distributed= True
+cfg,
+device,
+distributed= True
 ):
     model = {}
-    total_params = {}
-    for agent in cfg.env.agents:
-        
-        jepa = JEPA(cfg.model, 
-                    input_dim=(cfg.model.channels, cfg.model.img_size, cfg.model.img_size),
-                    action_dim= cfg.model.predictor.action_dim)
-        jepa.to(device)
-        
-        comm_module = CommModule(input_channel= 32, num_primitives= 5)
-        comm_module.to(device)
-
-        msg_enc = MSGEnc(num_primitives= 5, latent_dim = 32)
-        msg_enc.to(device) 
-        
-        proj = JepaProjector(z_channels=32, c_input_dim=msg_enc.latent_dim)
-        proj.to(device)
-
-        def count_parameters(model):
-            return sum(p.numel() for p in model.parameters() if p.requires_grad)
-        
-        logger.info("Agent: %s", agent)
-        logger.info("JEPA Parameters: %d", count_parameters(jepa))
-        logger.info("CommModule Parameters: %d", count_parameters(comm_module))
-        logger.info("MSgEncoder Parameters: %d", count_parameters(msg_enc))
-        logger.info("Projector Parameters: %d", count_parameters(proj))
-        
-        logger.info("-"*50)
-        total_params[agent] = count_parameters(jepa) + count_parameters(comm_module) + count_parameters(msg_enc) + count_parameters(proj)
-
-        model[agent] = {}
-        if distributed:
-            model[agent]["jepa"] = DistributedDataParallel(jepa, device_ids = [device], find_unused_parameters=True)
-            model[agent]["comm_module"] = DistributedDataParallel(comm_module, device_ids = [device], find_unused_parameters=True)
-            model[agent]["msg_enc"] = DistributedDataParallel(msg_enc, device_ids = [device], find_unused_parameters= True)
-            model[agent]["proj"] = DistributedDataParallel(proj, device_ids = [device], find_unused_parameters= True)
-
-        else:
-            model[agent]["jepa"] = jepa
-            model[agent]["comm_module"] = comm_module
-            model[agent]["msg_enc"] = msg_enc
-            model[agent]["proj"] = proj
-
-    logger.info("Total Parameters: %d", sum(total_params.values()))
-    logger.info("Parameters per Agent: %s", sum(total_params.values())/len(cfg.env.agents))
-
-
-        
+    total_params = 0
     
+    jepa = JEPA(cfg.model, 
+                input_dim=(cfg.model.channels, cfg.model.img_size, cfg.model.img_size),
+                action_dim= cfg.model.predictor.action_dim)
+    jepa.to(device)
+
+    msg_enc = MSGEnc(num_primitives= 5, latent_dim = 32)
+    msg_enc.to(device) 
+
+    obs_enc = MeNet6(cfg.model.backbone, (3, cfg.model.img_size, cfg.model.img_size)) 
+    obs_enc.to(device)
+    
+    proj = JepaProjector(z_channels=32, c_input_dim=msg_enc.latent_dim)
+    proj.to(device)
+
+    comm_module = CommModule(input_channel= 32, num_primitives= 5)
+    comm_module.to(device)
+
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
+    logger.info("JEPA Parameters: %d", count_parameters(jepa))
+    logger.info("CommModule Parameters: %d", count_parameters(comm_module))
+    logger.info("MSgEncoder Parameters: %d", count_parameters(msg_enc))
+    logger.info("Projector Parameters: %d", count_parameters(proj))
+    
+    logger.info("-"*50)
+    total_params += count_parameters(jepa) + count_parameters(comm_module) + count_parameters(msg_enc) + count_parameters(proj) + count_parameters(obs_enc)
+
+    model["rec"] = {}
+    model["send"] = {}
+    if distributed:
+        model["rec"]['jepa'] = DistributedDataParallel(jepa, device_ids = [device], find_unused_parameters=True)
+        
+        model["send"]["obs_enc"] = DistributedDataParallel(obs_enc, device_ids = [device], find_unused_parameters=True)
+        model["send"]["msg_enc"] = DistributedDataParallel(msg_enc, device_ids = [device], find_unused_parameters= True)
+        model["send"]["proj"] = DistributedDataParallel(proj, device_ids = [device], find_unused_parameters= True)
+        model["send"]["comm_module"] = DistributedDataParallel(comm_module, device_ids = [device], find_unused_parameters=True)
+
+    else:
+        model["rec"]["jepa"] = jepa
+        
+        model["send"]["obs_enc"] = obs_enc
+        model["send"]["msg_enc"] = msg_enc
+        model["send"]["proj"] = proj
+        model["send"]["comm_module"] = comm_module
+
+    logger.info("Total Parameters: %d", total_params)
+    
+
     return model
