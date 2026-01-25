@@ -249,11 +249,11 @@ import wandb
 CHECKPOINT_FREQ = 1
 @patch
 def fit(self: WMTrainer):
-    for agent in self.agents:
-        self.model[agent]['jepa'].train()
-        self.model[agent]['msg_enc'].train()
-        self.model[agent]['comm_module'].train()
-        self.model[agent]['proj'].train()
+    self.jepa.train()
+    self.obs_enc.train()
+    self.msg_enc.train()
+    self.comm_module.train()
+    self.proj.train()
 
     latest_file = "latest.pt"
     folder = self.dmpc_dir
