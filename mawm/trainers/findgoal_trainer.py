@@ -107,7 +107,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     }
     
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 7
 @patch
 def get_sampling_prob(self: WMTrainer, epoch):
     if epoch < self.schedule_start_epoch:
@@ -119,7 +119,7 @@ def get_sampling_prob(self: WMTrainer, epoch):
         progress = (epoch - self.schedule_start_epoch) / (self.schedule_end_epoch - self.schedule_start_epoch)
         return progress
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
 @patch
 def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 
@@ -153,7 +153,7 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
     
     return msg_hat, msg_target, h_for_receiver, proj_z, proj_h
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
 @patch
 def rec_jepa(self: WMTrainer, data, h):
     obs, pos, _, _, act, _, dones = data
@@ -178,7 +178,7 @@ def rec_jepa(self: WMTrainer, data, h):
     
     return z0, z, act, mask_t, mask, len(obs)
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 14
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 @patch  
 def train_epoch(self: WMTrainer, epoch):
     total_running_loss = 0.0
@@ -190,6 +190,28 @@ def train_epoch(self: WMTrainer, epoch):
 
     for batch_idx, data in enumerate(self.train_loader):
         global_step = epoch * len(self.train_loader) + batch_idx
+        lr = self.scheduler.adjust_learning_rate(global_step)
+
+
+        if self.verbose  and epoch == 1 and batch_idx == 0:
+            self.logger.info(f"\n=== LR DIAGNOSTIC ===")
+            self.logger.info(f"Epoch: {epoch}")
+            self.logger.info(f"Batch idx: {batch_idx}")
+            self.logger.info(f"Global step passed to scheduler: {global_step}")
+            self.logger.info(f"Total batches per epoch: {len(self.train_loader)}")
+            self.logger.info(f"Total epochs: {self.cfg.epochs}")
+            self.logger.info(f"Batch size: {self.scheduler.batch_size}")
+            self.logger.info(f"Base LR: {self.scheduler.base_lr}")
+    
+    # Test what LR you get at different steps
+    for test_step in [0, 1, 10, 100, len(self.train_loader)]:
+        test_lr = self.scheduler.adjust_learning_rate(test_step)
+        self.logger.info(f"  Step {test_step}: LR = {test_lr:.6e}")
+
+        if self.verbose and batch_idx == 0:
+            self.logger.info(f"\n{'='*80}")
+            self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
+            self.logger.info(f"{'='*80}")
         
         self.optimizer.zero_grad()
         
@@ -275,7 +297,7 @@ def train_epoch(self: WMTrainer, epoch):
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 15
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
@@ -295,11 +317,8 @@ def fit(self: WMTrainer):
 
     for epoch in range(1, self.cfg.epochs + 1):
         self.logger.info("Epoch %d" % (epoch))
-        lr = self.scheduler.adjust_learning_rate(epoch)
-        if self.verbose:
-            self.logger.info(f"\n{'='*80}")
-            self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
-            self.logger.info(f"{'='*80}")
+        # lr = self.scheduler.adjust_learning_rate(epoch)
+        
             
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)

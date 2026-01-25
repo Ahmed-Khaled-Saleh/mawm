@@ -79,7 +79,7 @@ class Scheduler:
         for param_group in self.optimizer.param_groups:
             base_lr = param_group.get("base_lr", self.base_lr)
             # Scaling LR by batch size (Linear Scaling Rule)
-            base_lr = base_lr * self.batch_size / 256
+            # base_lr = base_lr * self.batch_size / 256
             
             if step < warmup_steps:
                 lr = base_lr * step / warmup_steps
@@ -100,7 +100,7 @@ class Scheduler:
             param_group["lr"] = lr
         return lr
 
-# %% ../../nbs/04b_optimizers.scheduler.ipynb 14
+# %% ../../nbs/04b_optimizers.scheduler.ipynb 15
 import math
 
 
