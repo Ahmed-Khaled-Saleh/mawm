@@ -277,19 +277,15 @@ def fit(self: WMTrainer):
             
             save_dict = {
                 'epoch': epoch,
+                'jepa': get_state(self.jepa),
+                'obs_enc': get_state(self.obs_enc),
+                'msg_enc': get_state(self.msg_enc),
+                'comm_module': get_state(self.comm_module),
+                'proj': get_state(self.proj),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
                 "lr": lr,
             }
-            
-            jepas_dict = {f"jepa_{agent}": get_state(self.model[agent]['jepa']) for agent in self.agents}
-            save_dict.update(jepas_dict)
-            comms_dict = {f"comm_module_{agent}": get_state(self.model[agent]['comm_module']) for agent in self.agents}
-            save_dict.update(comms_dict)
-            msg_encs_dict = {f"msg_enc_{agent}": get_state(self.model[agent]['msg_enc']) for agent in self.agents}
-            save_dict.update(msg_encs_dict)
-            projs_dict = {f"proj_{agent}": get_state(self.model[agent]['proj']) for agent in self.agents}
-            save_dict.update(projs_dict)
             
             try:
                 torch.save(save_dict, path)
