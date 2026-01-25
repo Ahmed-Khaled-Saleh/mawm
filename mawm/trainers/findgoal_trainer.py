@@ -76,11 +76,11 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (z0[1:] - z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
-    sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp_min(1)
+    sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp(min=1)
 
     if self.cfg.loss.vicreg.sim_coeff_t:
         diff_t = ( z0[1:] -  z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
-        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp_min(1)
+        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp(min=1)
     else:
         sim_loss_t = torch.zeros([1], device=self.device)
     
