@@ -64,8 +64,9 @@ from torch.distributed.nn import all_reduce as functional_all_reduce
 
 def all_reduce_differentiable(x, op="AVG"):
     if dist.is_available() and dist.is_initialized():
+        x_new = x.clone()
         op_type = ReduceOp.__dict__[op.upper()]
-        return functional_all_reduce(x, op_type)
+        return functional_all_reduce(x_new, op_type)
     else:
         return x
 
