@@ -190,19 +190,29 @@ def train_epoch(self: WMTrainer, epoch):
 
     for batch_idx, data in enumerate(self.train_loader):
         global_step = epoch * len(self.train_loader) + batch_idx
+        
         self.optimizer.zero_grad()
+        
         g = torch.Generator().manual_seed(epoch + batch_idx) 
         decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
-        
-        # Store all pair outputs first
-        pair_outputs = []
+        pair_idx = 0
         
         for rec in self.agents:
             for sender in self.agents:
                 if sender == rec: continue
                 
+                pair_idx += 1
+                self.logger.info(f"\n=== Processing pair {pair_idx}: {sender} -> {rec} ===")
+                
+                # Track tensor versions BEFORE forward
+                if pair_idx > 1:
+                    self.logger.info("Checking parameter versions before forward pass:")
+                    for name, param in self.jepa.named_parameters():
+                        self.logger.info(f"  {name}: version={param._version}")
+                
+                # Forward pass
                 msg_hat, msg_target, h, proj_z, proj_h = self.sender_jepa(
                     data[sender].values(), sampling_prob, decision_rand
                 )
@@ -211,71 +221,53 @@ def train_epoch(self: WMTrainer, epoch):
                     data[rec].values(), h
                 )
                 
-                pair_outputs.append({
-                    'sender': sender,
-                    'rec': rec,
-                    'z0': z0,
-                    'z': z,
-                    'act': act,
-                    'mask_t': mask_t,
-                    'mask': mask,
-                    'msg_target': msg_target,
-                    'msg_hat': msg_hat,
-                    'proj_h': proj_h,
-                    'proj_z': proj_z,
-                    'len_obs': len_obs
-                })
-        
-        # Now compute all losses and accumulate
-        batch_total_loss = 0.0
-        
-        for pair_data in pair_outputs:
-            losses = self.criterion(
-                global_step, 
-                pair_data['z0'], 
-                pair_data['z'], 
-                pair_data['act'], 
-                pair_data['msg_target'], 
-                pair_data['msg_hat'], 
-                pair_data['proj_h'], 
-                pair_data['proj_z'], 
-                pair_data['mask_t']
-            )
-            
-            self.logger.info("Losses: %s" % str({k: v.item() for k, v in losses.items()}))
-            
-            s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
-            r_jepa = self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
-            task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
-                         self.W_SIM_T * losses['sim_loss_t'] + 
-                         self.cfg.loss.idm.coeff * losses['idm_loss'])
+                # Compute losses
+                losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
+                
+                s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
+                r_jepa = self.lambda_ * losses['sigreg_img'] + (1 - self.lambda_) * losses['sim_loss_dynamics']
+                task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
+                             self.W_SIM_T * losses['sim_loss_t'] + 
+                             self.cfg.loss.idm.coeff * losses['idm_loss'])
 
-            pair_loss = s_jepa + r_jepa + task_loss
-            
-            self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
-            
-            scaled_loss = pair_loss / num_pairs
-            batch_total_loss += scaled_loss
+                pair_loss = s_jepa + r_jepa + task_loss
+                scaled_loss = pair_loss / num_pairs
+                
+                # Track tensor versions BEFORE backward
+                self.logger.info("Checking parameter versions before backward:")
+                for name, param in self.jepa.named_parameters():
+                    self.logger.info(f"  {name}: version={param._version}")
+                
+                # Check if any intermediate tensors have unexpected versions
+                if self.verbose:
+                    self.logger.info(f"Loss tensor versions:")
+                    self.logger.info(f"  scaled_loss: {scaled_loss._version if hasattr(scaled_loss, '_version') else 'N/A'}")
+                    self.logger.info(f"  z0: {z0._version if hasattr(z0, '_version') else 'N/A'}")
+                    self.logger.info(f"  z: {z._version if hasattr(z, '_version') else 'N/A'}")
+                    self.logger.info(f"  mask_t: {mask_t._version if hasattr(mask_t, '_version') else 'N/A'}")
+                    
+                    try:
+                        self.logger.info(f"Calling backward for pair {pair_idx}...")
+                        scaled_loss.backward()
+                        self.logger.info(f"Backward successful for pair {pair_idx}")
+                    except RuntimeError as e:
+                        self.logger.error(f"ERROR during backward for pair {pair_idx}: {e}")
+                        
+                        # Print detailed info about all tensors in the computation graph
+                        self.logger.error("Parameter versions at error:")
+                        for name, param in self.jepa.named_parameters():
+                            self.logger.error(f"  {name}: version={param._version}")
+                        
+                        raise e
+                
+                num_valid = mask.sum().item()
+                total_running_loss += pair_loss.item() * num_valid
+                total_valid_steps += num_valid
 
-            num_valid = pair_data['mask'].sum().item()
-            total_running_loss += pair_loss.item() * num_valid
-            total_valid_steps += num_valid
-
-            if self.verbose:
-                for k, v in losses.items():
-                    batch_log_accumulator[f"pair_{pair_data['sender']}_to_{pair_data['rec']}/{k}"] = v.item()
-
-        # Single backward pass
-        batch_total_loss.backward()
         self.optimizer.step()
-
-        if self.verbose:
-            self.writer.write(batch_log_accumulator)
-            
-            processed_samples = batch_idx * len_obs 
-            self.logger.info(f'Train Epoch: {epoch} [{processed_samples}/{len(self.train_loader.dataset)} '
-                             f'({100. * batch_idx / len(self.train_loader):.0f}%)]\t'
-                             f'Batch Total Loss: {batch_total_loss.item():.4f}')
+        
+        if batch_idx == 0:  # Only do one batch for debugging
+            break
 
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
