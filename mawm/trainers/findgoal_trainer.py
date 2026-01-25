@@ -187,12 +187,13 @@ def train_epoch(self: WMTrainer, epoch):
 
     self.sampler.set_epoch(epoch) if epoch > 0 else None
     sampling_prob = self.get_sampling_prob(epoch)
-    g = torch.Generator().manual_seed(epoch + batch_idx) 
-    decision_rand = torch.rand(1, generator=g).item()
+   
 
     for batch_idx, data in enumerate(self.train_loader):
         global_step = epoch * len(self.train_loader) + batch_idx
         self.optimizer.zero_grad()
+        g = torch.Generator().manual_seed(epoch + batch_idx) 
+        decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
 
