@@ -97,9 +97,10 @@ class SIGRegFunctional(torch.nn.Module):
         # x = F.normalize(x, p=2, dim=-1)
         
         # 1. Sync projection matrix A
-        g = torch.Generator(device=x.device).manual_seed(int(global_step))
-        A = torch.randn(d_dim, self.num_slices, generator=g, device=x.device)
-        A = A / A.norm(p=2, dim=0).clamp(min=1e-8)
+        with torch.no_grad():
+            g = torch.Generator(device=x.device).manual_seed(int(global_step))
+            A = torch.randn(d_dim, self.num_slices, generator=g, device=x.device)
+            A = A / A.norm(p=2, dim=0).clamp(min=1e-8)
 
         # 2. Project & ECF Terms
         projections = x @ A # [T, B, Slices]
@@ -117,9 +118,9 @@ class SIGRegFunctional(torch.nn.Module):
         
         # 4. Global Differentiable Sync (SUM instead of AVG)
         # We sum all numerators and all denominators across GPUs
-        global_sum_real = all_reduce_differentiable(local_sum_real, op="SUM")
-        global_sum_imag = all_reduce_differentiable(local_sum_imag, op="SUM")
-        global_count = all_reduce_differentiable(local_count, op="SUM")
+        global_sum_real = all_reduce_differentiable(local_sum_real.clone(), op="SUM")
+        global_sum_imag = all_reduce_differentiable(local_sum_imag.clone(), op="SUM")
+        global_count = all_reduce_differentiable(local_count.clone(), op="SUM")
         
         # 5. Global Weighted Mean
         # Avoid division by zero with clamp
