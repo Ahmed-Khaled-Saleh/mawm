@@ -72,7 +72,7 @@ class WMTrainer:
 def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat, proj_h, proj_z, mask_t):
 
     flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
-    sigreg_img = self.sigreg(flat_encodings, global_step= global_step, mask= mask_t)
+    sigreg_img = self.sigreg(flat_encodings, global_step= global_step, mask= mask_t.clone())
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (z0[1:] - z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
@@ -89,8 +89,8 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     # SENDER LOSSES
     msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B, T, 5, 7, 7], targe: [B, T, 7, 7] with long() dtype.
 
-    sigreg_msg = self.sigreg(proj_h, global_step= global_step, mask= mask_t)
-    sigreg_obs = self.sigreg(proj_z, global_step= global_step, mask= mask_t)
+    sigreg_msg = self.sigreg(proj_h, global_step= global_step, mask= mask_t.clone())
+    sigreg_obs = self.sigreg(proj_z, global_step= global_step, mask= mask_t.clone())
 
     inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
     inv_loss_sender = (inv_loss_sender * mask_t).sum() / mask_t.sum().clamp_min(1) 
