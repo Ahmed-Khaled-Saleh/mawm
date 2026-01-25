@@ -224,7 +224,8 @@ def train_epoch(self: WMTrainer, epoch):
                 self.logger.info(f"JEPA Losses: sender_jepa_loss: {s_jepa.item():.4f}, rec_jepa_loss: {r_jepa.item():.4f}, task_loss: {task_loss.item():.4f}")
                 
                 scaled_loss = pair_loss / num_pairs
-                batch_total_loss += scaled_loss
+                scaled_loss.backward()
+                # batch_total_loss += scaled_loss
 
                 num_valid = mask.sum().item()
                 total_running_loss += pair_loss.item() * num_valid
@@ -234,7 +235,6 @@ def train_epoch(self: WMTrainer, epoch):
                     for k, v in losses.items():
                         batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
 
-        batch_total_loss.backward()
         self.optimizer.step()
 
         # if batch_idx % 2 == 0:
