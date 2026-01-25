@@ -203,15 +203,15 @@ def train_epoch(self: WMTrainer, epoch):
             self.logger.info(f"Batch size: {self.scheduler.batch_size}")
             self.logger.info(f"Base LR: {self.scheduler.base_lr}")
     
-    # Test what LR you get at different steps
-    for test_step in [0, 1, 10, 100, len(self.train_loader)]:
-        test_lr = self.scheduler.adjust_learning_rate(test_step)
-        self.logger.info(f"  Step {test_step}: LR = {test_lr:.6e}")
+        # # Test what LR you get at different steps
+        # for test_step in [0, 1, 10, 100, len(self.train_loader)]:
+        #     test_lr = self.scheduler.adjust_learning_rate(test_step)
+        #     self.logger.info(f"  Step {test_step}: LR = {test_lr:.6e}")
 
-        if self.verbose and batch_idx == 0:
-            self.logger.info(f"\n{'='*80}")
-            self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
-            self.logger.info(f"{'='*80}")
+        #     if self.verbose and batch_idx == 0:
+        #         self.logger.info(f"\n{'='*80}")
+        #         self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
+        #         self.logger.info(f"{'='*80}")
         
         self.optimizer.zero_grad()
         
