@@ -123,8 +123,9 @@ class SIGRegFunctional(torch.nn.Module):
         
         # 5. Global Weighted Mean
         # Avoid division by zero with clamp
-        ecf_real = global_sum_real / global_count.clamp(min=1e-6)
-        ecf_imag = global_sum_imag / global_count.clamp(min=1e-6)
+        global_count_safe = global_count.clone()
+        ecf_real = global_sum_real / global_count_safe.clamp(min=1e-6)
+        ecf_imag = global_sum_imag / global_count_safe.clamp(min=1e-6)
 
         # 6. Loss Calculation
         err = (ecf_real - self.phi).square() + ecf_imag.square()

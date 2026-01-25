@@ -154,7 +154,7 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 @patch
 def rec_jepa(self: WMTrainer, data, h):
     obs, pos, _, _, act, _, dones = data
-    mask = (~dones.bool()).float().to(self.device) # [B, T, d=1]
+    mask = (~dones.bool()).float().to(self.device).clone() # [B, T, d=1]
     mask = rearrange(mask, 'b t d-> b (t d)', d=1)
     mask_t = rearrange(mask, 'b t -> t b')
 
