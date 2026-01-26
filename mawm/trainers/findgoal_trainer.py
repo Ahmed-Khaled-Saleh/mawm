@@ -202,12 +202,13 @@ def train_epoch(self: WMTrainer, epoch):
     sampling_prob = self.get_sampling_prob(epoch)
 
     for batch_idx, data in enumerate(self.train_loader):
+        self.logger.info(f"Starting batch {batch_idx} of epoch {epoch}")
         global_step = epoch * len(self.train_loader) + batch_idx
         lr = self.scheduler.adjust_learning_rate(global_step)
 
         # if self.verbose:
         #     self.logger.info(f"learning rate at global step {global_step} and epoch {epoch} and batch_idx: {batch_idx} is: {lr}")
-
+    
         if self.verbose  and epoch == 1 and batch_idx == 0:
             self.logger.info(f"\n=== LR DIAGNOSTIC ===")
             self.logger.info(f"Epoch: {epoch}")
@@ -321,7 +322,6 @@ def fit(self: WMTrainer):
 
     for epoch in range(1, self.cfg.epochs + 1):
         self.logger.info("Epoch %d" % (epoch))        
-        
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)
         

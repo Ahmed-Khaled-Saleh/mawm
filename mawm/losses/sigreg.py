@@ -40,7 +40,7 @@ class SIGReg(torch.nn.Module):
         return statistic.mean()
 
 
-# %% ../../nbs/03c_losses.sigreg.ipynb 10
+# %% ../../nbs/03c_losses.sigreg.ipynb 7
 import torch
 import torch.nn.functional as F
 import torch.distributed as dist
@@ -70,7 +70,6 @@ class SIGRegFunctional(torch.nn.Module):
         self.register_buffer("t", t)
         self.register_buffer("phi", phi)
         self.register_buffer("weights", weights * phi)
-
 
     def forward(self, x, global_step, mask):
         """
@@ -122,7 +121,7 @@ class SIGRegFunctional(torch.nn.Module):
         # Average over Time and Slices
         return statistic.mean() * self.scale_factor
 
-# %% ../../nbs/03c_losses.sigreg.ipynb 13
+# %% ../../nbs/03c_losses.sigreg.ipynb 10
 class TemporalSIGReg(torch.nn.Module):
     def __init__(self, knots=17, num_slices=256):
         super().__init__()
