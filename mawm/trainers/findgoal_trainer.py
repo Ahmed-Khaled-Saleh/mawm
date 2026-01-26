@@ -18,7 +18,7 @@ import pandas as pd
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 5
 from ..models.utils import save_checkpoint
 from ..loggers.base import AverageMeter
-from ..losses.sigreg import SIGRegFunctional, SIGReg
+from ..losses.sigreg import SIGRegFunctional, SIGReg, TemporalSIGReg
 from ..losses.idm import IDMLoss    
 from ..models.utils import flatten_conv_output
 from einops import rearrange
@@ -50,6 +50,7 @@ class WMTrainer:
         self.logger = logger
 
         self.sigreg = SIGRegFunctional().to(self.device) if self.cfg.distributed else SIGReg().to(self.device)
+        self.sigreg_time = TemporalSIGReg().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
 
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
@@ -83,16 +84,17 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
 
     flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
     sigreg_img = self.sigreg(flat_encodings, global_step= global_step, mask= mask_t.clone())
+    sigreg_t = self.sigreg_time(flat_encodings, global_step= global_step, mask= mask_t.clone())
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (z0[1:] - z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
     sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp(min=1)
 
-    if self.cfg.loss.vicreg.sim_coeff_t:
-        diff_t = ( z0[1:] -  z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
-        sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp(min=1)
-    else:
-        sim_loss_t = torch.zeros([1], device=self.device)
+    # if self.cfg.loss.vicreg.sim_coeff_t:
+    #     diff_t = ( z0[1:] -  z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
+    #     sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp(min=1)
+    # else:
+    #     sim_loss_t = torch.zeros([1], device=self.device)
     
     idm_loss = self.idm(embeddings= z0, predictions= z, actions= actions)
     
@@ -101,6 +103,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
 
     sigreg_msg = self.sigreg(proj_h, global_step= global_step, mask= mask_t.clone())
     sigreg_obs = self.sigreg(proj_z, global_step= global_step, mask= mask_t.clone())
+    # sigreg_t_sender = self.sigreg_time(proj_h, global_step= global_step, mask= mask_t.clone())
 
     inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
     inv_loss_sender = (inv_loss_sender * mask_t).sum() / mask_t.sum().clamp_min(1) 
@@ -109,8 +112,9 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
         'sigreg_img': sigreg_img,
         'sigreg_msg': sigreg_msg,
         'sigreg_obs': sigreg_obs,
+        'sigreg_time': sigreg_t,
         'sim_loss_dynamics': sim_loss,
-        'sim_loss_t': sim_loss_t,
+        # 'sim_loss_t': sim_loss_t,
         'inv_loss_sender': inv_loss_sender,
         'msg_pred_loss': msg_pred_loss,
         'idm_loss': idm_loss
@@ -251,7 +255,8 @@ def train_epoch(self: WMTrainer, epoch):
                 s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
                 r_jepa = 0.4 * losses['sigreg_img'] + (1 - 0.4) * losses['sim_loss_dynamics']
                 task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
-                             self.W_SIM_T * losses['sim_loss_t'] + 
+                            #  self.W_SIM_T * losses['sim_loss_t'] + 
+                             self.W_SIM_T * losses['sigreg_time'] +
                              self.cfg.loss.idm.coeff * losses['idm_loss'])
 
                 pair_loss = s_jepa + r_jepa + task_loss

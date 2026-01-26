@@ -126,7 +126,7 @@ def __call__(self: VICReg, encodings, state_predictions, mask= None):
     
     return losses
 
-# %% ../../nbs/03b_losses.vicreg.ipynb 9
+# %% ../../nbs/03b_losses.vicreg.ipynb 10
 @patch
 def std_loss(self:VICReg, x: torch.Tensor, across_time=False):
     x = x - x.mean(dim=1, keepdim=True)  # mean for each dim across batch samples
@@ -148,7 +148,7 @@ def std_loss(self:VICReg, x: torch.Tensor, across_time=False):
 
     return std_loss
 
-# %% ../../nbs/03b_losses.vicreg.ipynb 10
+# %% ../../nbs/03b_losses.vicreg.ipynb 11
 @patch
 def cov_loss(self: VICReg, x: torch.Tensor, across_time=False):
     batch_size = x.shape[1]
