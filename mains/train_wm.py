@@ -58,6 +58,7 @@ def main(cfg):
 
     dist.init_process_group(backend='nccl')
     seed_all()
+    cfg.distributed = True
     
     local_rank = int(os.environ['LOCAL_RANK'])
     torch.cuda.set_device(local_rank)
@@ -65,12 +66,12 @@ def main(cfg):
     logger = get_logger(__name__, force=True)
     logger.info(f"Initialized process with local_rank: {local_rank}")
 
-    train_loader, dist_sampler = init_data(cfg, distributed= True)   
+    train_loader, dist_sampler = init_data(cfg, distributed= cfg.distributed)   
     
     start_epoch = 0
     dist_sampler.set_epoch(start_epoch)
 
-    model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'), distributed= True)
+    model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'), distributed= cfg.distributed)
 
     optimizer = init_opt(cfg, model)
 

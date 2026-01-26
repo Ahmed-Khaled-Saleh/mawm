@@ -22,5 +22,5 @@ echo "Current PYTHONPATH: $PYTHONPATH"
 
 
 ts=$(date +%Y%m%d_%H%M%S)
-srun python train_wm.py --config ../cfgs/findgoal/mawm/ablations/datasize/mawm_ds_200k.yaml --env_file ../.env --timestamp ${ts}
+srun python train_wm_single.py --config ../cfgs/findgoal/mawm/ablations/datasize/mawm_ds_200k.yaml --env_file ../.env --timestamp ${ts}
 # srun python vicreg_main.py --config ../cfgs/MPCJepa/mpc.yaml --env_file ../.env --timestamp ${ts}
