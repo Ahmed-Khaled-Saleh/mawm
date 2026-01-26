@@ -18,7 +18,7 @@ import pandas as pd
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 5
 from ..models.utils import save_checkpoint
 from ..loggers.base import AverageMeter
-from ..losses.sigreg import SIGRegFunctional
+from ..losses.sigreg import SIGRegFunctional, SIGReg
 from ..losses.idm import IDMLoss    
 from ..models.utils import flatten_conv_output
 from einops import rearrange
@@ -49,11 +49,16 @@ class WMTrainer:
         self.verbose = verbose
         self.logger = logger
 
-        self.sigreg = SIGRegFunctional().to(self.device)
+        self.sigreg = SIGRegFunctional().to(self.device) if self.cfg.distributed else SIGReg().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
 
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
-        self.idm.action_predictor = DistributedDataParallel(self.idm.action_predictor, device_ids = [self.device], find_unused_parameters=True)
+        if self.cfg.distributed:
+            self.idm.action_predictor = DistributedDataParallel(self.idm.action_predictor, device_ids = [self.device], find_unused_parameters=True)
+        
+        else:
+            self.idm.action_predictor = self.idm.action_predictor.to(self.device)
+        
         new_opt_group = {'params': self.idm.action_predictor.parameters(), 'lr': 0.001, 'weight_decay': 1e-4}
         self.optimizer.add_param_group(new_opt_group)
 
@@ -187,7 +192,9 @@ def train_epoch(self: WMTrainer, epoch):
     total_valid_steps = 0
     num_pairs = len(self.agents) * (len(self.agents) - 1)
 
-    self.sampler.set_epoch(epoch) if epoch > 0 else None
+    if self.sampler:
+        self.sampler.set_epoch(epoch) if epoch > 0 else None
+        
     sampling_prob = self.get_sampling_prob(epoch)
 
     for batch_idx, data in enumerate(self.train_loader):
@@ -261,7 +268,6 @@ def train_epoch(self: WMTrainer, epoch):
                         self.logger.info(f"    TOTAL pair_loss: {pair_loss.item():.4f}")
 
                 scaled_loss = pair_loss / num_pairs
-                
                 scaled_loss.backward()
                 
                 num_valid = mask.sum().item()

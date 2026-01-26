@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['base_tf', 'denormalize_tf', 'lejepa_train_tf', 'lejepa_test_tf', 'msg_tf', 'get_graphics_primitives', 'show_grid',
            'get_cell_color', 'get_grid_chars', 'generate_msg', 'MsgTransform', 'debug_channels', 'plot_grid',
-           'get_data_path', 'init_data', 'show_batch', 'init_data_dist']
+           'get_data_path', 'init_data_single', 'show_batch', 'init_data_dist', 'init_data']
 
 # %% ../../nbs/01b_data.utils.ipynb 3
 from fastcore import *
@@ -263,35 +263,26 @@ def get_data_path():
 import torch
 
 from .loaders import MarlGridDataset
-def init_data(cfg):
+def init_data_single(cfg):
     cfg.data.data_dir = get_data_path()
+
     train_ds = MarlGridDataset(
-        cfg = cfg,
+        cfg= cfg,
         train= True,
         transform= base_tf,
         msg_tf= msg_tf
     )
 
-    test_ds = MarlGridDataset(
-        cfg = cfg,
-        train= False,
-        transform= base_tf,
-        msg_tf= msg_tf
-    )
-
-    train_loader = torch.utils.data.DataLoader(
+    data_loader = torch.utils.data.DataLoader(
         train_ds,
         batch_size=cfg.data.batch_size,
-        shuffle=True,
+        drop_last=cfg.data.loader.drop_last,
+        shuffle= True,
     )
+    sampler = None
 
-    val_loader = torch.utils.data.DataLoader(
-        test_ds,
-        batch_size=cfg.data.batch_size,
-        shuffle=False,
-    )
 
-    return train_loader, val_loader
+    return data_loader, sampler
 
 
 # %% ../../nbs/01b_data.utils.ipynb 45
@@ -361,4 +352,12 @@ def init_data_dist(
 
     return data_loader, dist_sampler
 
+
+
+# %% ../../nbs/01b_data.utils.ipynb 49
+def init_data(cfg, distributed= False):
+    if distributed:
+        return init_data_dist(cfg)
+    else:
+        return init_data_single(cfg)
 

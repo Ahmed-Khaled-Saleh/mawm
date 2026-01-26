@@ -56,21 +56,25 @@ def seed_all():
 
 def main(cfg):
 
-    dist.init_process_group(backend='nccl')
+    # dist.init_process_group(backend='nccl')
     seed_all()
+    cfg.distributed = False
     
-    local_rank = int(os.environ['LOCAL_RANK'])
-    torch.cuda.set_device(local_rank)
+    #local_rank = 0#int(os.environ['LOCAL_RANK'])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    local_rank = device.index if device.type == 'cuda' else None
+    if local_rank is not None:
+        torch.cuda.set_device(local_rank)
 
     logger = get_logger(__name__, force=True)
     logger.info(f"Initialized process with local_rank: {local_rank}")
 
-    train_loader, dist_sampler = init_data(cfg, distributed= True)   
+    train_loader, sampler = init_data(cfg, distributed= False)   
     
-    start_epoch = 0
-    dist_sampler.set_epoch(start_epoch)
+    # start_epoch = 0
+    # dist_sampler.set_epoch(start_epoch)
 
-    model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'), distributed= True)
+    model = init_models(cfg, device= device, distributed= False)
 
     optimizer = init_opt(cfg, model)
 
@@ -84,14 +88,14 @@ def main(cfg):
     )
 
     logger.info(f"Starting training... from {local_rank}")
-    verbose = dist.get_rank() == 0  # print only on global_rank==0
+    verbose = True #dist.get_rank() == 0  # print only on global_rank==0
     if verbose:
         writer = WandbWriter(cfg)
     else:
         writer = None
         
-    trainer = init_trainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
-                           device= local_rank, earlystopping= None, scheduler= scheduler,
+    trainer = init_trainer(cfg, model, train_loader, sampler = sampler, optimizer= optimizer,
+                           device= device, earlystopping= None, scheduler= scheduler,
                            writer= writer, verbose= verbose, logger = logger)
 
     df_res = trainer.fit()
