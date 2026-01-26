@@ -192,6 +192,9 @@ def train_epoch(self: WMTrainer, epoch):
         global_step = epoch * len(self.train_loader) + batch_idx
         lr = self.scheduler.adjust_learning_rate(global_step)
 
+        if self.verbose:
+            self.logger.info(f"learning rate at global step {global_step} and epoch {epoch} and batch_idx: {batch_idx} is: {lr}")
+
 
         if self.verbose  and epoch == 1 and batch_idx == 0:
             self.logger.info(f"\n=== LR DIAGNOSTIC ===")
@@ -202,16 +205,6 @@ def train_epoch(self: WMTrainer, epoch):
             self.logger.info(f"Total epochs: {self.cfg.epochs}")
             self.logger.info(f"Batch size: {self.scheduler.batch_size}")
             self.logger.info(f"Base LR: {self.scheduler.base_lr}")
-    
-        # # Test what LR you get at different steps
-        # for test_step in [0, 1, 10, 100, len(self.train_loader)]:
-        #     test_lr = self.scheduler.adjust_learning_rate(test_step)
-        #     self.logger.info(f"  Step {test_step}: LR = {test_lr:.6e}")
-
-        #     if self.verbose and batch_idx == 0:
-        #         self.logger.info(f"\n{'='*80}")
-        #         self.logger.info(f"EPOCH {epoch} - LR: {lr:.6f}")
-        #         self.logger.info(f"{'='*80}")
         
         self.optimizer.zero_grad()
         
@@ -267,9 +260,9 @@ def train_epoch(self: WMTrainer, epoch):
                         self.logger.info(f"    task_loss: {task_loss.item():.4f}")
                         self.logger.info(f"    TOTAL pair_loss: {pair_loss.item():.4f}")
 
-                # scaled_loss = pair_loss / num_pairs
+                scaled_loss = pair_loss / num_pairs
                 
-                pair_loss.backward()
+                scaled_loss.backward()
                 
                 num_valid = mask.sum().item()
                 total_running_loss += pair_loss.item() * num_valid
