@@ -28,7 +28,7 @@ class SIGReg(torch.nn.Module):
         self.register_buffer("phi", window)
         self.register_buffer("weights", weights * window)
 
-    def forward(self, proj):
+    def forward(self, proj, global_step= None, mask=None):
         A = torch.randn(proj.size(-1), 256, device=proj.device)
         A = A.div_(A.norm(p=2, dim=0))
         x_t = (proj @ A).unsqueeze(-1) * self.t
