@@ -53,15 +53,28 @@ import torch
 def init_opt(
     cfg,
     models,
-    betas=(0.9, 0.999),
-    eps=1e-8,
 ):
-    
-    all_params = []
-    for k in models.keys():
-        for model in models[k].values():
-            all_params += list(model.parameters())
+    # all_params = []
+    # for k in models.keys():
+    #     for model in models[k].values():
+    #         all_params += list(model.parameters())
+    # optimizer = torch.optim.AdamW(all_params, lr= cfg.optimizer.lr, betas=betas, eps=eps)
 
-    optimizer = torch.optim.AdamW(all_params, betas=betas, eps=eps)
+    base_lr = cfg.optimizer.lr
+    jepa_params = list(models['rec']['jepa'].parameters())
+    encoder_params = list(models["send"]["obs_enc"].parameters()) + list(models['send']['msg_enc'].parameters())
+    comm_params = list(models['send']['comm_module'].parameters())
+    proj_params = list(models['send']['proj'].parameters())
+    
+    param_groups = [
+        {'params': jepa_params, 'lr': 0.5 * base_lr, 'name': 'jepa'},
+        {'params': encoder_params, 'lr': base_lr, 'name': 'encoders'},
+        {'params': comm_params, 'lr': base_lr * 2.0, 'name': 'comm_module'},
+        {'params': proj_params, 'lr': base_lr * 1.5, 'name': 'proj'}
+    ]
+    
+    optimizer = torch.optim.AdamW(param_groups, weight_decay=1e-4)
+    
+
     return optimizer
 

@@ -138,9 +138,6 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 
     msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
     if decision_rand < sampling_prob:
-        # with torch.no_grad():
-        #     sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)
-        #     sample = rearrange(sample, 'b t h w c -> b t c h w')
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
         probs = F.softmax(msg_hat, dim=2)  # [B, T, 5, 7, 7]
@@ -192,9 +189,8 @@ def train_epoch(self: WMTrainer, epoch):
         global_step = epoch * len(self.train_loader) + batch_idx
         lr = self.scheduler.adjust_learning_rate(global_step)
 
-        if self.verbose:
-            self.logger.info(f"learning rate at global step {global_step} and epoch {epoch} and batch_idx: {batch_idx} is: {lr}")
-
+        # if self.verbose:
+        #     self.logger.info(f"learning rate at global step {global_step} and epoch {epoch} and batch_idx: {batch_idx} is: {lr}")
 
         if self.verbose  and epoch == 1 and batch_idx == 0:
             self.logger.info(f"\n=== LR DIAGNOSTIC ===")
@@ -213,7 +209,6 @@ def train_epoch(self: WMTrainer, epoch):
         
         batch_log_accumulator = {}
         if self.verbose:
-            # Check data stats (first batch only)
             if batch_idx == 0:
                 obs, pos, msg, msg_target, act, _, dones = data[self.agents[0]].values()
                 self.logger.info(f"Input data stats:")
@@ -309,10 +304,8 @@ def fit(self: WMTrainer):
     lst_dfs = []
 
     for epoch in range(1, self.cfg.epochs + 1):
-        self.logger.info("Epoch %d" % (epoch))
-        # lr = self.scheduler.adjust_learning_rate(epoch)
+        self.logger.info("Epoch %d" % (epoch))        
         
-            
         train_loss = self.train_epoch(epoch)
         loss_meter.update(train_loss)
         
@@ -332,7 +325,6 @@ def fit(self: WMTrainer):
                 'proj': get_state(self.proj),
                 'train_loss': train_loss,
                 'optimizer': self.optimizer.state_dict(),
-                # "lr": lr,
             }
             
             try:

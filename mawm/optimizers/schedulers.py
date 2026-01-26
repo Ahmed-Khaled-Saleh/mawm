@@ -15,6 +15,7 @@ from torch.optim import Optimizer
 
 # %% ../../nbs/04b_optimizers.scheduler.ipynb 6
 import torch
+import math
 class Scheduler:
     def __init__(
         self,
@@ -64,41 +65,82 @@ class Scheduler:
     #             param_group["lr"] = lr
     #         return lr
 
+    # def adjust_learning_rate(self, step: int):
+    #     if self.schedule == "constant":
+    #         return self.base_lr
+        
+    #     # 1. Calculate totals outside the loop
+    #     total_max_steps = self.epochs * self.batch_steps
+    #     warmup_steps = int(0.10 * total_max_steps)
+        
+    #     # 2. Prevent division by zero if total_max_steps is very small
+    #     if total_max_steps == warmup_steps:
+    #         warmup_steps = max(1, warmup_steps - 1)
+
+    #     for param_group in self.optimizer.param_groups:
+    #         base_lr = param_group.get("base_lr", self.base_lr)
+    #         # Scaling LR by batch size (Linear Scaling Rule)
+    #         # base_lr = base_lr * self.batch_size / 256
+            
+    #         if step < warmup_steps:
+    #             lr = base_lr * step / warmup_steps
+    #         else:
+    #             # Use local variables for the decay calculation 
+    #             # to avoid modifying the outer scope variables
+    #             current_decay_step = step - warmup_steps
+    #             decay_period = total_max_steps - warmup_steps
+                
+    #             # Ensure we don't divide by zero if epochs are too low
+    #             if decay_period <= 0:
+    #                 lr = base_lr
+    #             else:
+    #                 q = 0.5 * (1 + math.cos(math.pi * current_decay_step / decay_period))
+    #                 end_lr = base_lr * 0.001
+    #                 lr = base_lr * q + end_lr * (1 - q)
+            
+    #         param_group["lr"] = lr
+    #     return lr
+    
     def adjust_learning_rate(self, step: int):
         if self.schedule == "constant":
             return self.base_lr
         
-        # 1. Calculate totals outside the loop
         total_max_steps = self.epochs * self.batch_steps
         warmup_steps = int(0.10 * total_max_steps)
         
-        # 2. Prevent division by zero if total_max_steps is very small
         if total_max_steps == warmup_steps:
             warmup_steps = max(1, warmup_steps - 1)
-
+        
         for param_group in self.optimizer.param_groups:
-            base_lr = param_group.get("base_lr", self.base_lr)
-            # Scaling LR by batch size (Linear Scaling Rule)
-            # base_lr = base_lr * self.batch_size / 256
+            # Get the ORIGINAL base_lr for this group
+            if 'base_lr' not in param_group:
+                param_group['base_lr'] = param_group['lr']  # Store initial LR
             
+            group_base_lr = param_group['base_lr']
+            
+            # Apply warmup/cosine schedule to this group's base LR
             if step < warmup_steps:
-                lr = base_lr * step / warmup_steps
+                lr = group_base_lr * step / warmup_steps
             else:
-                # Use local variables for the decay calculation 
-                # to avoid modifying the outer scope variables
                 current_decay_step = step - warmup_steps
                 decay_period = total_max_steps - warmup_steps
                 
-                # Ensure we don't divide by zero if epochs are too low
                 if decay_period <= 0:
-                    lr = base_lr
+                    lr = group_base_lr
                 else:
                     q = 0.5 * (1 + math.cos(math.pi * current_decay_step / decay_period))
-                    end_lr = base_lr * 0.001
-                    lr = base_lr * q + end_lr * (1 - q)
+                    end_lr = group_base_lr * 0.001
+                    lr = group_base_lr * q + end_lr * (1 - q)
             
-            param_group["lr"] = lr
-        return lr
+            param_group['lr'] = lr
+            
+            # Log LR for different groups
+            if step % 100 == 0:
+                group_name = param_group.get('name', 'unnamed')
+                print(f"Step {step}, Group {group_name}: LR = {lr:.6e}")
+        
+        # Return the base LR (not group-specific)
+        return self.base_lr
 
 # %% ../../nbs/04b_optimizers.scheduler.ipynb 15
 import math
