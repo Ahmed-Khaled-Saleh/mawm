@@ -17,7 +17,7 @@ env:
 
 data:
   data_dir: /scratch/project_2009050/datasets/MarlGridV3/ #/home/sehadn1/MarlGridV3
-  batch_size: 128  
+  batch_size: 64  
   seq_len: 40
   data_size: 200000
   V: 4
