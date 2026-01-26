@@ -22,6 +22,7 @@ from ..losses.sigreg import SIGRegFunctional
 from ..losses.idm import IDMLoss    
 from ..models.utils import flatten_conv_output
 from einops import rearrange
+from torch.nn.parallel import DistributedDataParallel
 
 class WMTrainer:
     def __init__(self, cfg, model, train_loader, sampler,
@@ -50,7 +51,11 @@ class WMTrainer:
 
         self.sigreg = SIGRegFunctional().to(self.device)
         self.cross_entropy = nn.CrossEntropyLoss()
+
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
+        self.idm.action_predictor = DistributedDataParallel(self.idm.action_predictor, device_ids = [self.device], find_unused_parameters=True)
+        new_opt_group = {'params': self.idm.action_predictor.parameters(), 'lr': 0.001, 'weight_decay': 1e-4}
+        self.optimizer.add_param_group(new_opt_group)
 
         self.lambda_ = self.cfg.loss.lambda_
         self.W_H_PRED = self.cfg.loss.W_H_PRED

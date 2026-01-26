@@ -69,8 +69,8 @@ def init_opt(
     param_groups = [
         {'params': jepa_params, 'lr': 0.5 * base_lr, 'name': 'jepa'},
         {'params': encoder_params, 'lr': base_lr, 'name': 'encoders'},
-        {'params': comm_params, 'lr': base_lr * 2.0, 'name': 'comm_module'},
-        {'params': proj_params, 'lr': base_lr * 1.5, 'name': 'proj'}
+        {'params': comm_params, 'lr': base_lr * 1.0, 'name': 'comm_module'},
+        {'params': proj_params, 'lr': base_lr * 0.5, 'name': 'proj'}
     ]
     
     optimizer = torch.optim.AdamW(param_groups, weight_decay=1e-4)
