@@ -68,9 +68,9 @@ def main(cfg):
 
     train_loader, dist_sampler = init_data(cfg, distributed= cfg.distributed)  
 
+    print(len(train_loader))
     for batch_idx, data in enumerate(train_loader):
         logger.info(f"Data loader working properly, batch {batch_idx} fetched")
-        print(len(train_loader))
         break
     
     start_epoch = 0
