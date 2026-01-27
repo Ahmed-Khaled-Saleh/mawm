@@ -75,6 +75,7 @@ def main(cfg):
     
     start_epoch = 0
     dist_sampler.set_epoch(start_epoch)
+    print(len(train_loader))
 
     model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'), distributed= cfg.distributed)
 
