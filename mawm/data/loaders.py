@@ -13,7 +13,7 @@ from fastcore.utils import *
 # %% ../../nbs/01c_data.loaders.ipynb 4
 from math import ceil
 def get_num_rollouts(data_size, batch_size, seq_len):
-    return ceil(data_size / batch_size / seq_len)  #  ceil( data_size / batch_size / seq_len )  =  ceil
+    return ceil(data_size / seq_len)  #  ceil( data_size / batch_size / seq_len )  =  ceil
 
 
 # %% ../../nbs/01c_data.loaders.ipynb 6

@@ -256,8 +256,8 @@ def train_epoch(self: WMTrainer, epoch):
                     
                 losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
                 
-                s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + (1 - self.lambda_) * losses['inv_loss_sender']
-                r_jepa = 0.4 * losses['sigreg_img'] + (1 - 0.4) * losses['sim_loss_dynamics']
+                s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + 4 * losses['inv_loss_sender']
+                r_jepa = 0.4 * losses['sigreg_img'] + 4 * losses['sim_loss_dynamics']
                 task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
                             #  self.W_SIM_T * losses['sim_loss_t'] + 
                              self.W_SIM_T * losses['sigreg_time'] +
@@ -305,7 +305,7 @@ def train_epoch(self: WMTrainer, epoch):
     final_epoch_loss = (total_running_loss / total_valid_steps) if total_valid_steps > 0 else 0.0
     return final_epoch_loss
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 12
 import wandb
 CHECKPOINT_FREQ = 1
 @patch
