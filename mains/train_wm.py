@@ -90,7 +90,8 @@ def main(cfg):
         writer = WandbWriter(cfg)
     else:
         writer = None
-        
+    
+    print(dist_sampler)
     trainer = init_trainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                            device= local_rank, earlystopping= None, scheduler= scheduler,
                            writer= writer, verbose= verbose, logger = logger)

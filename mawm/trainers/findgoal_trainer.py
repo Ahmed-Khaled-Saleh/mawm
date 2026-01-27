@@ -192,6 +192,7 @@ def rec_jepa(self: WMTrainer, data, h):
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 @patch  
 def train_epoch(self: WMTrainer, epoch):
+    self.logger.info(f"Inside train_epoch: Starting epoch {epoch}")
     total_running_loss = 0.0
     total_valid_steps = 0
     num_pairs = len(self.agents) * (len(self.agents) - 1)
