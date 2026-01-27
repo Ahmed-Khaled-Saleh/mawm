@@ -198,10 +198,12 @@ def train_epoch(self: WMTrainer, epoch):
     num_pairs = len(self.agents) * (len(self.agents) - 1)
 
     if self.sampler:
+        self.logger.info(f"Setting epoch {epoch} for sampler")
         self.sampler.set_epoch(epoch) if epoch > 0 else None
         
     sampling_prob = self.get_sampling_prob(epoch)
 
+    self.logger.info(f"Sampling probability for epoch {epoch}: {sampling_prob:.4f}")
     for batch_idx, data in enumerate(self.train_loader):
         self.logger.info(f"Starting batch {batch_idx} of epoch {epoch}")
         global_step = epoch * len(self.train_loader) + batch_idx
