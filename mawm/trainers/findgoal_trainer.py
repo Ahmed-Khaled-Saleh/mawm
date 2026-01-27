@@ -259,9 +259,8 @@ def train_epoch(self: WMTrainer, epoch):
                 s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + 4 * losses['inv_loss_sender']
                 r_jepa = 0.4 * losses['sigreg_img'] + 4 * losses['sim_loss_dynamics']
                 task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
-                            #  self.W_SIM_T * losses['sim_loss_t'] + 
-                             self.W_SIM_T * losses['sigreg_time'] +
-                             self.cfg.loss.idm.coeff * losses['idm_loss'])
+                             3.0 * losses['sigreg_time'] + #self.W_SIM_T
+                             5.4 * losses['idm_loss'])#self.cfg.loss.idm.coeff
 
                 pair_loss = s_jepa + r_jepa + task_loss
                 if self.verbose:
