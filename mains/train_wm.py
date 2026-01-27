@@ -66,7 +66,12 @@ def main(cfg):
     logger = get_logger(__name__, force=True)
     logger.info(f"Initialized process with local_rank: {local_rank}")
 
-    train_loader, dist_sampler = init_data(cfg, distributed= cfg.distributed)   
+    train_loader, dist_sampler = init_data(cfg, distributed= cfg.distributed)  
+
+    for batch_idx, data in enumerate(train_loader):
+        logger.info(f"Data loader working properly, batch {batch_idx} fetched")
+        print(len(train_loader))
+        break
     
     start_epoch = 0
     dist_sampler.set_epoch(start_epoch)
