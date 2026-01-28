@@ -20,3 +20,5 @@ wandb
 datasets
 h5py
 python-dotenv
+jupyterlab
+jupyter
