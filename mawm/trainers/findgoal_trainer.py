@@ -83,7 +83,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     # RECEIVER LOSSES
     flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
     self.logger.info(f"flat_encodings std: {flat_encodings.std().item():.4f}, mean: {flat_encodings.mean().item():.4f}")
-    sigreg_img =self.sigreg(flat_encodings, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
+    sigreg_img =self.sigreg(flat_encodings, global_step= global_step, across_dim= 1, distributed= self.cfg.distributed)
     sigreg_time = self.sigreg(flat_encodings, global_step= global_step, across_dim= 0, distributed= self.cfg.distributed)
 
     transition_mask = mask_t[1:] * mask_t[:-1]
@@ -93,8 +93,8 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     idm_loss = self.idm(embeddings= z0, predictions= z, actions= actions)
     
     # SENDER LOSSES
-    sigreg_msg = self.sigreg(proj_h, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
-    sigreg_obs = self.sigreg(proj_z, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
+    sigreg_msg = self.sigreg(proj_h, global_step= global_step, across_dim= 1, distributed= self.cfg.distributed)
+    sigreg_obs = self.sigreg(proj_z, global_step= global_step, across_dim= 1, distributed= self.cfg.distributed)
 
     inv_loss_sender = (proj_z - proj_h).square().mean()
 
