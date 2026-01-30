@@ -50,6 +50,9 @@ class WMTrainer:
         self.logger = logger
 
         self.sigreg = SIGReg().to(self.device)
+        self.cross_entropy_loss = nn.CrossEntropyLoss()
+
+         # Initialize IDM Loss
 
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
         if self.cfg.distributed:
@@ -94,7 +97,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
 
     inv_loss_sender = (proj_z - proj_h).square().mean()
 
-    msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B*T, 5, 7, 7], targe: [B*T, 7, 7] with long() dtype.
+    msg_pred_loss = self.cross_entropy_loss(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B*T, 5, 7, 7], targe: [B*T, 7, 7] with long() dtype.
 
     return {
         'sigreg_img': sigreg_img,
