@@ -60,14 +60,14 @@ model:
 loss:
   projector: id
   sigreg:
-    msg: 0.05
-    obs: 0.05
-    img: 4.0
-    time: 3.0
+    msg: 0.005 # 0.05
+    obs: 0.005 # 0.05
+    img: 0.01 # 4.0
+    time: 0.01 # 3.0
   inv_loss:
-    coeff: 0.95
+    coeff: 1.0 #0.95
   msg_pred:
-    coeff: 1.0
+    coeff: 0.5 # 1.0
   alpha: 4.0
   beta: 6.9
   gamma: 0.75
