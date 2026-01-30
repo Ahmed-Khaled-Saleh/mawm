@@ -82,6 +82,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
 
     # RECEIVER LOSSES
     flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
+    self.logger.info(f"flat_encodings std: {flat_encodings.std().item():.4f}, mean: {flat_encodings.mean().item():.4f}")
     sigreg_img =self.sigreg(flat_encodings, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
     sigreg_time = self.sigreg(flat_encodings, global_step= global_step, across_dim= 0, distributed= self.cfg.distributed)
 
@@ -105,7 +106,6 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
         'sigreg_obs': sigreg_obs,
         'sigreg_time': sigreg_time,
         'sim_loss_dynamics': sim_loss,
-        # 'sim_loss_t': sim_loss_t,
         'inv_loss_sender': inv_loss_sender,
         'msg_pred_loss': msg_pred_loss,
         'idm_loss': idm_loss
