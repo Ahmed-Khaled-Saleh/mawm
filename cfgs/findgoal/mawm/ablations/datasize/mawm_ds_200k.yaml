@@ -1,7 +1,7 @@
 project_name: Debug-3
   
 epochs: 600
-save_every_freq: 5
+save_every_freq: 10
 loss_fn: CrossEntropyLoss
 writer: WandbWriter
 noreload: False
@@ -58,10 +58,20 @@ model:
 
 
 loss:
-  lambda_: 0.2
-  W_H_PRED: 0.2
-  W_SIM_T: 0.25
   projector: id
+  sigreg:
+    msg: 0.05
+    img: 4.0
+    time: 3.0
+  inv_loss:
+    coeff: 0.95
+  msg_pred:
+    coeff: 1.0
+  alpha: 4.0
+  beta: 6.9
+  gamma: 0.75
+  omega: 5.4
+  lambd: 3.0
   idm:
     action_dim: 5
     coeff: 0.2

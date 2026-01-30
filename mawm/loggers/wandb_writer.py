@@ -21,15 +21,51 @@ class WandbWriter:
         self.exp_name = self.cfg.project_name + self.cfg.now
         key = os.getenv("WANDB_API_KEY")
         wandb.login(key=key, verify=False)
-        self.run = wandb.init(project=self.cfg.project_name, name= self.exp_name, config=self.cfg)
+        log_cfg = self.prepare_cfg(self.cfg)
+        log_cfg = argparse.Namespace(**log_cfg)
+        self.run = wandb.init(project=self.cfg.project_name, name= self.exp_name, config=log_cfg)
         
 
 # %% ../../nbs/08b_loggers.wandb_writer.ipynb 5
+from omegaconf import OmegaConf
+@patch
+def prepare_cfg(self: WandbWriter, cfg):
+    log_cfg = OmegaConf.create()
+
+    log_cfg.epochs = cfg.epochs
+    log_cfg.trainer = cfg.trainer.class_name
+
+    # losses
+    log_cfg.idm = cfg.loss.idm.coeff
+    log_cfg.sigreg_img = cfg.loss.sigreg.img
+    log_cfg.sigreg_time = cfg.loss.sigreg.time
+
+    log_cfg.sigreg_obs = cfg.loss.sigreg.obs
+    log_cfg.sigreg_msg = cfg.loss.sigreg.msg
+
+    log_cfg.dynamics = cfg.loss.dynamics.coeff
+    log_cfg.inv_loss = cfg.loss.inv_loss.coeff
+
+    log_cfg.msg_pred = cfg.loss.msg_pred.coeff
+    
+    # data parameters
+    log_cfg.batch_size = cfg.data.batch_size
+    log_cfg.seq_len = cfg.data.seq_len
+    log_cfg.data_size = cfg.data.data_size
+
+    # model architecture
+    log_cfg.backbone = cfg.model.backbone.arch
+    log_cfg.predictor = cfg.model.predictor.arch
+    
+    return log_cfg
+   
+
+# %% ../../nbs/08b_loggers.wandb_writer.ipynb 6
 @patch
 def write(self: WandbWriter, log_dict):
     wandb.log(log_dict)
 
-# %% ../../nbs/08b_loggers.wandb_writer.ipynb 6
+# %% ../../nbs/08b_loggers.wandb_writer.ipynb 7
 @patch
 def finish(self: WandbWriter):
     self.run.finish()

@@ -17,6 +17,7 @@
 ### - Singularity is a container platform designed for HPC environments, allowing users to create and run
 ###   containers that package applications and their dependencies. (similar to Docker but optimized for HPC).
 
+# singularity build --force /projappl/project_462001088/EasyBuild/SW/container/PyTorch/2.7.1-rocm-6.2.4-python-3.12-Mycontainer-singularity-20250827/lumi-pytorch-rocm-6.2.4-python-3.12-pytorch-v2.7.1-dockerhash-0d479e852886.sif lumi-pytorch-rocm-6.2.4-python-3.12-pytorch-v2.7.1-Mycontainer.def
 
 # To start, we set the environment variable that points to the user easybuild directory.
 # Basically this tells easybuild where to install the container.

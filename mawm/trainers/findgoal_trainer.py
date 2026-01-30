@@ -18,7 +18,7 @@ import pandas as pd
 # %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 5
 from ..models.utils import save_checkpoint
 from ..loggers.base import AverageMeter
-from ..losses.sigreg import SIGRegFunctional, SIGReg, TemporalSIGReg
+from ..losses.sigreg import SIGReg
 from ..losses.idm import IDMLoss    
 from ..models.utils import flatten_conv_output
 from einops import rearrange
@@ -49,9 +49,7 @@ class WMTrainer:
         self.verbose = verbose
         self.logger = logger
 
-        self.sigreg = SIGRegFunctional().to(self.device) if self.cfg.distributed else SIGReg().to(self.device)
-        self.sigreg_time = TemporalSIGReg().to(self.device)
-        self.cross_entropy = nn.CrossEntropyLoss()
+        self.sigreg = SIGReg().to(self.device)
 
         self.idm = IDMLoss(cfg.loss.idm, (32, 15, 15), device= self.device)
         if self.cfg.distributed:
@@ -64,9 +62,6 @@ class WMTrainer:
         self.optimizer.add_param_group(new_opt_group)
 
         self.lambda_ = self.cfg.loss.lambda_
-        self.W_H_PRED = self.cfg.loss.W_H_PRED
-        self.W_SIM_T = self.cfg.loss.W_SIM_T
-
         self.schedule_start_epoch = 5  # Start mixing at epoch 5
         self.schedule_end_epoch = 20    # Fully use predictions by epoch 20
     
@@ -78,41 +73,34 @@ class WMTrainer:
 
     
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 6
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 7
 @patch
 def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat, proj_h, proj_z, mask_t):
 
+    # RECEIVER LOSSES
     flat_encodings = flatten_conv_output(z0) # [T, B, c`, h`, w`] => [T, B, D]
-    sigreg_img = self.sigreg(flat_encodings, global_step= global_step, mask= mask_t.clone())
-    sigreg_t = self.sigreg_time(flat_encodings, global_step= global_step, mask= mask_t.clone())
+    sigreg_img =self.sigreg(flat_encodings, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
+    sigreg_time = self.sigreg(flat_encodings, global_step= global_step, across_dim= 0, distributed= self.cfg.distributed)
 
     transition_mask = mask_t[1:] * mask_t[:-1]
     diff = (z0[1:] - z[1:]).pow(2).mean(dim=(2, 3, 4)) # (T-1, B)
     sim_loss = (diff * transition_mask).sum() / transition_mask.sum().clamp(min=1)
-
-    # if self.cfg.loss.vicreg.sim_coeff_t:
-    #     diff_t = ( z0[1:] -  z0[:-1]).pow(2).mean(dim=(2, 3, 4))# (T-1, B)
-    #     sim_loss_t = (diff_t * transition_mask).sum() / transition_mask.sum().clamp(min=1)
-    # else:
-    #     sim_loss_t = torch.zeros([1], device=self.device)
     
     idm_loss = self.idm(embeddings= z0, predictions= z, actions= actions)
     
     # SENDER LOSSES
-    msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B, T, 5, 7, 7], targe: [B, T, 7, 7] with long() dtype.
+    sigreg_msg = self.sigreg(proj_h, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
+    sigreg_obs = self.sigreg(proj_z, global_step= global_step, across_dim= (0, 1), distributed= self.cfg.distributed)
 
-    sigreg_msg = self.sigreg(proj_h, global_step= global_step, mask= mask_t.clone())
-    sigreg_obs = self.sigreg(proj_z, global_step= global_step, mask= mask_t.clone())
-    # sigreg_t_sender = self.sigreg_time(proj_h, global_step= global_step, mask= mask_t.clone())
+    inv_loss_sender = (proj_z - proj_h).square().mean()
 
-    inv_loss_sender = (proj_z - proj_h).square().mean(dim= -1)  # [T, B, d= 128] => [T, B]
-    inv_loss_sender = (inv_loss_sender * mask_t).sum() / mask_t.sum().clamp_min(1) 
+    msg_pred_loss = self.cross_entropy(msg_hat.flatten(0,1), msg_target.flatten(0,1)) #msg_hat: [B*T, 5, 7, 7], targe: [B*T, 7, 7] with long() dtype.
 
     return {
         'sigreg_img': sigreg_img,
         'sigreg_msg': sigreg_msg,
         'sigreg_obs': sigreg_obs,
-        'sigreg_time': sigreg_t,
+        'sigreg_time': sigreg_time,
         'sim_loss_dynamics': sim_loss,
         # 'sim_loss_t': sim_loss_t,
         'inv_loss_sender': inv_loss_sender,
@@ -121,7 +109,7 @@ def criterion(self: WMTrainer, global_step, z0, z, actions, msg_target, msg_hat,
     }
     
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 7
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
 @patch
 def get_sampling_prob(self: WMTrainer, epoch):
     if epoch < self.schedule_start_epoch:
@@ -133,9 +121,9 @@ def get_sampling_prob(self: WMTrainer, epoch):
         progress = (epoch - self.schedule_start_epoch) / (self.schedule_end_epoch - self.schedule_start_epoch)
         return progress
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 8
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
 @patch
-def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
+def sender_jepa(self: WMTrainer, data, sampling_prob, step):
 
     obs_sender, pos_sender, msg, msg_target, _,_, _ = data
     obs_sender = obs_sender.to(self.device)
@@ -143,14 +131,16 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
     msg = msg.to(self.device)
     msg_target = msg_target.to(self.device)
 
-        
+    g = torch.Generator().manual_seed(step) 
+    decision_rand = torch.rand(1, generator=g).item()
+    
     self.logger.info(f"device used for other agent data: {obs_sender.device}, {msg.device}")
 
     z = self.obs_enc(obs_sender, position = pos_sender)  #[B, T, c, h, w] => [B, T, c`, h`, w`]
     h_target = self.msg_enc(msg)  # [B, T, C, H, W] => [B, T, dim=32]
     proj_z, proj_h = self.proj(z, h_target) # True JEPA alignment
 
-    msg_hat = self.comm_module(z)  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
+    msg_hat = self.comm_module(z.detach())  # [B, T, c`, h`, w`] => [B, T, C=5, H=7, W=7]
     if decision_rand < sampling_prob:
         sample = F.one_hot(msg_hat.argmax(dim=2), num_classes=5)  # [B, T, 7, 7, 5]
         sample = rearrange(sample, 'b t h w c -> b t c h w')# [B, T, 5, 7, 7]
@@ -160,11 +150,11 @@ def sender_jepa(self: WMTrainer, data, sampling_prob, decision_rand):
 
     else:
         msg_used = msg  # [B, T, C, H, W]
-        h_for_receiver = h_target  # Use target encoding when not sampling
-    
+    h_for_receiver = h_target  # Use target encoding when not sampling
+
     return msg_hat, msg_target, h_for_receiver, proj_z, proj_h
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 9
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
 @patch
 def rec_jepa(self: WMTrainer, data, h):
     obs, pos, _, _, act, _, dones = data
@@ -189,7 +179,7 @@ def rec_jepa(self: WMTrainer, data, h):
     
     return z0, z, act, mask_t, mask, len(obs)
 
-# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 10
+# %% ../../nbs/05b_trainers.findgoal_trainer.ipynb 11
 @patch  
 def train_epoch(self: WMTrainer, epoch):
     self.logger.info(f"Inside train_epoch: Starting epoch {epoch}")
@@ -209,9 +199,6 @@ def train_epoch(self: WMTrainer, epoch):
         global_step = epoch * len(self.train_loader) + batch_idx
         lr = self.scheduler.adjust_learning_rate(global_step)
 
-        # if self.verbose:
-        #     self.logger.info(f"learning rate at global step {global_step} and epoch {epoch} and batch_idx: {batch_idx} is: {lr}")
-    
         if self.verbose  and epoch == 1 and batch_idx == 0:
             self.logger.info(f"\n=== LR DIAGNOSTIC ===")
             self.logger.info(f"Epoch: {epoch}")
@@ -223,9 +210,6 @@ def train_epoch(self: WMTrainer, epoch):
             self.logger.info(f"Base LR: {self.scheduler.base_lr}")
         
         self.optimizer.zero_grad()
-        
-        g = torch.Generator().manual_seed(epoch + batch_idx) 
-        decision_rand = torch.rand(1, generator=g).item()
         
         batch_log_accumulator = {}
         if self.verbose:
@@ -240,7 +224,7 @@ def train_epoch(self: WMTrainer, epoch):
                 if sender == rec: continue
                 
                 msg_hat, msg_target, h, proj_z, proj_h = self.sender_jepa(
-                    data[sender].values(), sampling_prob, decision_rand
+                    data[sender].values(), sampling_prob, epoch + batch_idx
                 )
                 
                 z0, z, act, mask_t, mask, len_obs = self.rec_jepa(
@@ -248,7 +232,6 @@ def train_epoch(self: WMTrainer, epoch):
                 )
 
                 if self.verbose:
-                    # Check for NaNs in embeddings
                     if torch.isnan(z0).any():
                         self.logger.error(f"NaN detected in z0!")
                     if torch.isnan(z).any():
@@ -256,13 +239,16 @@ def train_epoch(self: WMTrainer, epoch):
                     
                 losses = self.criterion(global_step, z0, z, act, msg_target, msg_hat, proj_h, proj_z, mask_t)
                 
-                s_jepa = self.lambda_ * (losses['sigreg_obs'] + losses['sigreg_msg']) + 4 * losses['inv_loss_sender']
-                r_jepa = 0.4 * losses['sigreg_img'] + 4 * losses['sim_loss_dynamics']
-                task_loss = (self.W_H_PRED * losses['msg_pred_loss'] + 
-                             3.0 * losses['sigreg_time'] + #self.W_SIM_T
-                             5.4 * losses['idm_loss'])#self.cfg.loss.idm.coeff
+                s_jepa = self.cfg.loss.sigreg.msg * (losses['sigreg_obs'] + losses['sigreg_msg']) + self.cfg.loss.inv_loss.coeff * losses['inv_loss_sender']
+                
+                r_jepa = self.cfg.loss.sigreg.img * losses['sigreg_img'] + losses['sim_loss_dynamics']
 
-                pair_loss = s_jepa + r_jepa + task_loss
+                collapse_loss = (self.cfg.loss.msg_pred.coeff * losses['msg_pred_loss'] + 
+                                self.cfg.loss.sigreg.time * losses['sigreg_time'] +
+                                self.cfg.loss.idm.coeff * losses['idm_loss'])
+
+                pair_loss = s_jepa + r_jepa + collapse_loss
+
                 if self.verbose:
                     if batch_idx % 5 == 0:
                         self.logger.info(f"\nBatch {batch_idx}, Pair {sender}->{rec}:")
@@ -272,7 +258,7 @@ def train_epoch(self: WMTrainer, epoch):
                         self.logger.info(f"  Combined losses:")
                         self.logger.info(f"    s_jepa: {s_jepa.item():.4f}")
                         self.logger.info(f"    r_jepa: {r_jepa.item():.4f}")
-                        self.logger.info(f"    task_loss: {task_loss.item():.4f}")
+                        self.logger.info(f"    collapse_loss: {collapse_loss.item():.4f}")
                         self.logger.info(f"    TOTAL pair_loss: {pair_loss.item():.4f}")
 
                 scaled_loss = pair_loss / num_pairs
@@ -286,12 +272,6 @@ def train_epoch(self: WMTrainer, epoch):
                     for k, v in losses.items():
                         batch_log_accumulator[f'pair_{sender}_to_{rec}/{k}'] = v.item()
     
-        torch.nn.utils.clip_grad_norm_(
-            [*self.jepa.parameters(), *self.obs_enc.parameters(), 
-            *self.msg_enc.parameters(), *self.comm_module.parameters(), 
-            *self.proj.parameters()],
-            max_norm=1.0  # Adjust this value
-        )
         self.optimizer.step()
 
         if self.verbose:
