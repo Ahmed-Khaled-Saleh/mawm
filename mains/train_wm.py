@@ -68,14 +68,12 @@ def main(cfg):
 
     train_loader, dist_sampler = init_data(cfg, distributed= cfg.distributed)  
 
-    print(len(train_loader))
     for batch_idx, data in enumerate(train_loader):
         logger.info(f"Data loader working properly, batch {batch_idx} fetched")
         break
     
     start_epoch = 0
     dist_sampler.set_epoch(start_epoch)
-    print(len(train_loader))
 
     model = init_models(cfg, device= torch.device(f'cuda:{local_rank}'), distributed= cfg.distributed)
 
@@ -97,7 +95,6 @@ def main(cfg):
     else:
         writer = None
     
-    print(dist_sampler)
     trainer = init_trainer(cfg, model, train_loader, sampler = dist_sampler, optimizer= optimizer,
                            device= local_rank, earlystopping= None, scheduler= scheduler,
                            writer= writer, verbose= verbose, logger = logger)

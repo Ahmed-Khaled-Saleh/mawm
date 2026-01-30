@@ -43,7 +43,7 @@ def prepare_cfg(self: WandbWriter, cfg):
     log_cfg.sigreg_obs = cfg.loss.sigreg.obs
     log_cfg.sigreg_msg = cfg.loss.sigreg.msg
 
-    log_cfg.dynamics = cfg.loss.dynamics.coeff
+    log_cfg.dynamics = 1#cfg.loss.dynamics.coeff
     log_cfg.inv_loss = cfg.loss.inv_loss.coeff
 
     log_cfg.msg_pred = cfg.loss.msg_pred.coeff

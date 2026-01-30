@@ -61,6 +61,7 @@ loss:
   projector: id
   sigreg:
     msg: 0.05
+    obs: 0.05
     img: 4.0
     time: 3.0
   inv_loss:
