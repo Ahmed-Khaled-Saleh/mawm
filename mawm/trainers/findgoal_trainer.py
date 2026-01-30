@@ -61,7 +61,7 @@ class WMTrainer:
         new_opt_group = {'params': self.idm.action_predictor.parameters(), 'lr': 0.001, 'weight_decay': 1e-4}
         self.optimizer.add_param_group(new_opt_group)
 
-        self.lambda_ = self.cfg.loss.lambda_
+        # self.lambda_ = self.cfg.loss.lambda_
         self.schedule_start_epoch = 5  # Start mixing at epoch 5
         self.schedule_end_epoch = 20    # Fully use predictions by epoch 20
     
